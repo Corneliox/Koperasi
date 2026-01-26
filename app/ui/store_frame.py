@@ -7,7 +7,7 @@ import customtkinter as ctk
 from tkinter import messagebox, filedialog
 from app.modules.warehouse import WarehouseManager
 from app.utils.export import export_inventory_excel, export_inventory_pdf
-from app.utils.excel_import import import_inventory_from_excel
+from app.utils.excel_import import import_inventory_from_excel, get_workbook_sheets, preview_excel_data
 from app.utils.receipt import generate_receipt
 
 
@@ -299,7 +299,7 @@ class StoreFrame(ctk.CTkFrame):
         self.load_data()
     
     def import_excel(self):
-        """Import inventory from Excel file"""
+        """Import inventory from Excel file with preview"""
         filepath = filedialog.askopenfilename(
             title="Pilih File Excel",
             filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
@@ -308,19 +308,30 @@ class StoreFrame(ctk.CTkFrame):
         if not filepath:
             return
         
-        try:
-            result = import_inventory_from_excel(filepath, self.category_context, self.current_user)
-            if result['success']:
-                messagebox.showinfo("Sukses", 
-                    f"Import berhasil!\n"
-                    f"Total: {result['total_items']} barang\n"
-                    f"Ditambah: {result['added']}\n"
-                    f"Diupdate: {result['updated']}")
-                self.load_data()
-            else:
-                messagebox.showerror("Error", f"Gagal import: {result['message']}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Gagal import: {str(e)}")
+        # Check for multiple sheets
+        sheets = get_workbook_sheets(filepath)
+        
+        if not sheets:
+            messagebox.showerror("Error", "Gagal membaca file Excel atau file rusak")
+            return
+        
+        # Open preview dialog
+        window_key = "import_preview"
+        if window_key in self.active_windows:
+            self.active_windows[window_key].lift()
+            return
+        
+        dialog = ImportPreviewDialog(
+            self, filepath, sheets, self.category_context, 
+            self.current_user, self.on_import_complete
+        )
+        self.active_windows[window_key] = dialog
+        dialog.protocol("WM_DELETE_WINDOW", lambda: self.close_window(window_key))
+    
+    def on_import_complete(self):
+        """Handle import completion"""
+        self.close_window("import_preview")
+        self.load_data()
     
     def export_excel(self):
         """Export inventory to Excel"""
@@ -352,9 +363,12 @@ class StoreFrame(ctk.CTkFrame):
         """Open dialog to add new item"""
         window_key = "add_item"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            self.active_windows[window_key].focus()
-            return
+            if not self.active_windows[window_key].winfo_exists():
+                del self.active_windows[window_key]
+            else:
+                self.active_windows[window_key].lift()
+                self.active_windows[window_key].focus()
+                return
         
         dialog = ItemDialog(self, "Tambah Barang Baru", self.on_item_saved)
         self.active_windows[window_key] = dialog
@@ -364,9 +378,12 @@ class StoreFrame(ctk.CTkFrame):
         """Open dialog to edit item"""
         window_key = f"edit_item_{item['id']}"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            self.active_windows[window_key].focus()
-            return
+            if not self.active_windows[window_key].winfo_exists():
+                del self.active_windows[window_key]
+            else:
+                self.active_windows[window_key].lift()
+                self.active_windows[window_key].focus()
+                return
         
         dialog = ItemDialog(self, f"Edit Barang: {item['name']}", self.on_item_saved, item)
         self.active_windows[window_key] = dialog
@@ -376,9 +393,12 @@ class StoreFrame(ctk.CTkFrame):
         """Open dialog to sell item"""
         window_key = f"sell_item_{item['id']}"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            self.active_windows[window_key].focus()
-            return
+            if not self.active_windows[window_key].winfo_exists():
+                del self.active_windows[window_key]
+            else:
+                self.active_windows[window_key].lift()
+                self.active_windows[window_key].focus()
+                return
         
         dialog = SellDialog(self, item, self.on_sale_complete)
         self.active_windows[window_key] = dialog
@@ -388,9 +408,12 @@ class StoreFrame(ctk.CTkFrame):
         """Open dialog to return item"""
         window_key = f"return_item_{item['id']}"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            self.active_windows[window_key].focus()
-            return
+            if not self.active_windows[window_key].winfo_exists():
+                del self.active_windows[window_key]
+            else:
+                self.active_windows[window_key].lift()
+                self.active_windows[window_key].focus()
+                return
         
         dialog = ReturDialog(self, item, self.warehouse, self.on_return_complete)
         self.active_windows[window_key] = dialog
@@ -399,8 +422,15 @@ class StoreFrame(ctk.CTkFrame):
     def close_window(self, window_key: str):
         """Close and remove window from registry"""
         if window_key in self.active_windows:
-            self.active_windows[window_key].destroy()
-            del self.active_windows[window_key]
+            try:
+                window = self.active_windows[window_key]
+                if window.winfo_exists():
+                    window.destroy()
+            except Exception:
+                pass
+            finally:
+                if window_key in self.active_windows:
+                    del self.active_windows[window_key]
     
     def on_item_saved(self, item_data: dict, item_id: int = None):
         """Handle item save (add or edit)"""
@@ -447,6 +477,214 @@ class StoreFrame(ctk.CTkFrame):
             self.load_data()
 
 
+class ImportPreviewDialog(ctk.CTkToplevel):
+    """Dialog for previewing Excel data before import"""
+    
+    def __init__(self, parent, filepath: str, sheets: list, 
+                 category_context: str, current_user: str, on_complete):
+        super().__init__(parent)
+        self.filepath = filepath
+        self.sheets = sheets
+        self.category_context = category_context
+        self.current_user = current_user
+        self.on_complete = on_complete
+        
+        self.title("📥 Preview Import Excel")
+        self.configure(fg_color="#1a1a2e")
+        self.minsize(800, 600)
+        
+        self.update_idletasks()
+        
+        window_width = 900
+        window_height = 700
+        x = (self.winfo_screenwidth() - window_width) // 2
+        y = (self.winfo_screenheight() - window_height) // 2
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        
+        self.create_controls()
+        self.create_preview_table()
+        
+        # Load initial data (first sheet)
+        if self.sheets:
+            self.load_sheet_preview(self.sheets[0])
+            
+        self.grab_set()
+    
+    def create_controls(self):
+        """Create top controls"""
+        control_frame = ctk.CTkFrame(self, fg_color="#16213e", corner_radius=10, height=80)
+        control_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
+        
+        ctk.CTkLabel(
+            control_frame, text="Pilih Worksheet:", 
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#cccccc"
+        ).pack(side="left", padx=20, pady=20)
+        
+        self.sheet_var = ctk.StringVar(value=self.sheets[0] if self.sheets else "")
+        self.sheet_menu = ctk.CTkOptionMenu(
+            control_frame, values=self.sheets,
+            variable=self.sheet_var, width=250, height=35,
+            fg_color="#374151", button_color="#4b5563",
+            command=self.load_sheet_preview
+        )
+        self.sheet_menu.pack(side="left", padx=10, pady=20)
+        
+        self.info_label = ctk.CTkLabel(
+            control_frame, text="", 
+            font=ctk.CTkFont(size=12), text_color="#00d4ff"
+        )
+        self.info_label.pack(side="left", padx=20, pady=20)
+        
+        # Action buttons
+        ctk.CTkButton(
+            control_frame, text="❌ Batal", width=100, height=35,
+            fg_color="#374151", hover_color="#4b5563",
+            command=self.destroy
+        ).pack(side="right", padx=10, pady=20)
+        
+        self.import_btn = ctk.CTkButton(
+            control_frame, text="💾 Import Data", width=150, height=35,
+            fg_color="#22c55e", hover_color="#16a34a",
+            text_color="#000", font=ctk.CTkFont(weight="bold"),
+            command=self.process_import
+        )
+        self.import_btn.pack(side="right", padx=10, pady=20)
+    
+    def create_preview_table(self):
+        """Create scrollable preview table with bidirectional scrolling support"""
+        # Outer container
+        preview_container = ctk.CTkFrame(self, fg_color="#1a1a2e")
+        preview_container.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
+        preview_container.grid_columnconfigure(0, weight=1)
+        preview_container.grid_rowconfigure(1, weight=1)
+        
+        # Header for preview
+        ctk.CTkLabel(
+            preview_container, text="👁️ Preview Data (20 Baris Pertama)",
+            font=ctk.CTkFont(size=12, weight="bold"), text_color="#888"
+        ).grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
+        
+        # Horizontal Scroll Frame (Outer)
+        self.horiz_scroll = ctk.CTkScrollableFrame(
+            preview_container, 
+            orientation="horizontal",
+            fg_color="#1e293b",
+            height=400 # Default height constraint
+        )
+        self.horiz_scroll.grid(row=1, column=0, sticky="nsew")
+        
+        # Container for Headers + Data inside Horizontal Scroll
+        self.inner_container = ctk.CTkFrame(self.horiz_scroll, fg_color="transparent")
+        self.inner_container.pack(fill="both", expand=True)
+        
+        # Header Row Frame
+        self.header_frame = ctk.CTkFrame(self.inner_container, fg_color="#374151", height=40)
+        self.header_frame.pack(fill="x", pady=(0, 2), anchor="n")
+        
+        # Vertical Scroll Frame (Inner) - for Data Rows
+        self.data_scroll = ctk.CTkScrollableFrame(
+            self.inner_container, 
+            orientation="vertical",
+            fg_color="transparent",
+            height=350 # Ensure it has height to scroll
+        )
+        self.data_scroll.pack(fill="both", expand=True)
+    
+    def load_sheet_preview(self, sheet_name):
+        """Load and display preview data for selected sheet"""
+        # Clear current preview
+        for widget in self.header_frame.winfo_children():
+            widget.destroy()
+        for widget in self.data_scroll.winfo_children():
+            widget.destroy()
+        
+        # Fetch data - Increased to 20 rows
+        result = preview_excel_data(self.filepath, sheet_name, max_rows=20)
+        
+        if not result['success']:
+            ctk.CTkLabel(
+                self.data_scroll, text=f"Error: {result['message']}",
+                text_color="#ef4444"
+            ).pack(pady=20)
+            self.import_btn.configure(state="disabled")
+            return
+        
+        self.import_btn.configure(state="normal")
+        self.info_label.configure(text=f"Total Baris: {result['total_rows']}")
+        
+        headers = result['headers']
+        data = result['data']
+        
+        # Calculate column widths based on content
+        col_widths = []
+        for i, header in enumerate(headers):
+            # Start with header length
+            max_len = len(str(header))
+            # Check data rows for this column
+            for row in data:
+                if i < len(row):
+                    max_len = max(max_len, len(str(row[i])))
+            
+            # Convert length to pixel width (approx 9px per char + padding)
+            width = min(max(max_len * 9 + 20, 80), 350)
+            col_widths.append(width)
+        
+        # Display Headers
+        for i, header in enumerate(headers):
+            lbl = ctk.CTkLabel(
+                self.header_frame, text=str(header), width=col_widths[i],
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color="#00d4ff"
+            )
+            lbl.grid(row=0, column=i, padx=2, pady=8)
+        
+        # Display Rows
+        for row_idx, row_data in enumerate(data):
+            row_frame = ctk.CTkFrame(self.data_scroll, fg_color="transparent")
+            row_frame.pack(fill="x", pady=1)
+            
+            for col_idx, cell_value in enumerate(row_data):
+                lbl = ctk.CTkLabel(
+                    row_frame, text=str(cell_value), width=col_widths[col_idx],
+                    font=ctk.CTkFont(size=11), text_color="#ccc"
+                )
+                lbl.grid(row=0, column=col_idx, padx=2, pady=2)
+    
+    def process_import(self):
+        """Execute the import for selected sheet"""
+        sheet_name = self.sheet_var.get()
+        
+        if messagebox.askyesno("Konfirmasi", f"Import data dari sheet '{sheet_name}'?"):
+            try:
+                result = import_inventory_from_excel(
+                    self.filepath, self.category_context, 
+                    self.current_user, sheet_name
+                )
+                
+                if result['success']:
+                    msg = (
+                        f"Import berhasil!\n\n"
+                        f"Sheet: {sheet_name}\n"
+                        f"Total Item: {result['total_items']}\n"
+                        f"Ditambah: {result['added']}\n"
+                        f"Diupdate: {result['updated']}"
+                    )
+                    if "warnings" in result:
+                        msg += "\n\nPeringatan (sebagian):\n" + "\n".join(result['warnings'])
+                        
+                    messagebox.showinfo("Sukses", msg)
+                    self.on_import_complete()
+                else:
+                    messagebox.showerror("Error", f"Gagal import: {result['message']}")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Terjadi kesalahan: {str(e)}")
+
+
 class ItemDialog(ctk.CTkToplevel):
     """Dialog for adding/editing items - SCROLLABLE VERSION"""
     
@@ -457,12 +695,11 @@ class ItemDialog(ctk.CTkToplevel):
         
         self.title(title)
         
-        # Window setup - call update_idletasks BEFORE geometry
+        # Window setup
         self.configure(fg_color="#1a1a2e")
         self.resizable(True, True)
         self.minsize(450, 400)
         
-        # CRITICAL: update_idletasks before geometry calculation
         self.update_idletasks()
         
         # Calculate center position
@@ -495,6 +732,7 @@ class ItemDialog(ctk.CTkToplevel):
             self.populate_form()
         
         self.grab_set()
+        self.focus_force()
     
     def create_form(self):
         """Create form fields inside scrollable frame"""
@@ -560,7 +798,7 @@ class ItemDialog(ctk.CTkToplevel):
         )
         self.status_menu.grid(row=9, column=0, sticky="ew", padx=20)
         
-        # Description - VISIBLE NOW
+        # Description
         ctk.CTkLabel(
             self.scroll_frame, text="Keterangan / Deskripsi", 
             text_color="#cccccc", anchor="w"
@@ -572,7 +810,7 @@ class ItemDialog(ctk.CTkToplevel):
         )
         self.desc_entry.grid(row=11, column=0, sticky="ew", padx=20)
         
-        # Buttons - VISIBLE NOW
+        # Buttons
         btn_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
         btn_frame.grid(row=12, column=0, pady=30)
         
@@ -593,11 +831,21 @@ class ItemDialog(ctk.CTkToplevel):
     
     def populate_form(self):
         """Populate form with existing item data"""
+        self.name_entry.delete(0, "end")
         self.name_entry.insert(0, self.item['name'])
+        
+        self.stock_entry.delete(0, "end")
         self.stock_entry.insert(0, str(self.item['stock']))
+        
+        self.buy_price_entry.delete(0, "end")
         self.buy_price_entry.insert(0, str(int(self.item['buy_price'])))
+        
+        self.sell_price_entry.delete(0, "end")
         self.sell_price_entry.insert(0, str(int(self.item['sell_price'])))
+        
         self.status_var.set(self.item['status'])
+        
+        self.desc_entry.delete("1.0", "end")
         if self.item.get('description'):
             self.desc_entry.insert("1.0", self.item['description'])
     
@@ -904,7 +1152,7 @@ class SellDialog(ctk.CTkToplevel):
 
 
 class ReturDialog(ctk.CTkToplevel):
-    """Dialog for returning items"""
+    """Dialog for returning items - SCROLLABLE VERSION"""
     
     def __init__(self, parent, item: dict, warehouse: WarehouseManager, on_return):
         super().__init__(parent)
@@ -914,71 +1162,85 @@ class ReturDialog(ctk.CTkToplevel):
         
         self.title(f"Retur: {item['name']}")
         self.configure(fg_color="#1a1a2e")
-        self.resizable(False, False)
+        self.resizable(True, True)
+        self.minsize(450, 450)
         
         # CRITICAL: update_idletasks before geometry
         self.update_idletasks()
         
-        window_width = 450
-        window_height = 420
+        window_width = 480
+        window_height = 500
         x = (self.winfo_screenwidth() - window_width) // 2
         y = (self.winfo_screenheight() - window_height) // 2
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
         
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        # Scrollable container
+        self.scroll_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.scroll_frame.grid_columnconfigure(0, weight=1)
+        
         self.create_form()
         self.grab_set()
+        self.focus_force()
     
     def create_form(self):
-        """Create return form"""
-        # Item info
+        """Create return form inside scrollable frame"""
+        # Header info
         ctk.CTkLabel(
-            self, text="↩️ Form Retur Barang",
+            self.scroll_frame, text="↩️ Form Retur Barang",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color="#f59e0b"
-        ).pack(pady=(30, 10))
+        ).pack(pady=(20, 10))
         
         ctk.CTkLabel(
-            self, text=self.item['name'],
-            font=ctk.CTkFont(size=14),
+            self.scroll_frame, text=self.item['name'],
+            font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#ffffff"
         ).pack()
         
         ctk.CTkLabel(
-            self, text=f"Stok saat ini: {self.item['stock']}",
+            self.scroll_frame, text=f"Stok saat ini: {self.item['stock']}",
             text_color="#888888"
         ).pack(pady=(0, 20))
         
         # Quantity
-        ctk.CTkLabel(self, text="Jumlah Retur *", text_color="#cccccc").pack(anchor="w", padx=50)
-        self.qty_entry = ctk.CTkEntry(self, width=350, height=40, corner_radius=8)
-        self.qty_entry.pack(padx=50, pady=(5, 15))
+        ctk.CTkLabel(self.scroll_frame, text="Jumlah Retur *", text_color="#cccccc"
+                     ).pack(anchor="w", padx=30, pady=(10, 5))
+        self.qty_entry = ctk.CTkEntry(self.scroll_frame, height=40, corner_radius=8)
+        self.qty_entry.pack(padx=30, fill="x")
         
         # Reason
-        ctk.CTkLabel(self, text="Alasan Retur *", text_color="#cccccc").pack(anchor="w", padx=50)
-        self.reason_text = ctk.CTkTextbox(self, width=350, height=100, corner_radius=8)
-        self.reason_text.pack(padx=50, pady=(5, 20))
+        ctk.CTkLabel(self.scroll_frame, text="Alasan Retur *", text_color="#cccccc"
+                     ).pack(anchor="w", padx=30, pady=(15, 5))
+        self.reason_text = ctk.CTkTextbox(self.scroll_frame, height=100, corner_radius=8)
+        self.reason_text.pack(padx=30, fill="x")
         
         # Buttons
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(pady=20)
+        btn_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
+        btn_frame.pack(pady=30, fill="x", padx=30)
         
         ctk.CTkButton(
             btn_frame, text="Batal", width=100, height=40,
             fg_color="#374151", hover_color="#4b5563",
             command=self.destroy
-        ).pack(side="left", padx=10)
+        ).pack(side="left")
         
         ctk.CTkButton(
-            btn_frame, text="Proses Retur", width=120, height=40,
+            btn_frame, text="Submit", width=120, height=40,
             fg_color="#f59e0b", hover_color="#d97706",
             text_color="#000000",
+            font=ctk.CTkFont(weight="bold"),
             command=self.process_return
-        ).pack(side="left", padx=10)
+        ).pack(side="right")
     
     def process_return(self):
         """Process return"""
         try:
-            qty = int(self.qty_entry.get())
+            qty_str = ''.join(filter(str.isdigit, self.qty_entry.get()))
+            qty = int(qty_str) if qty_str else 0
         except ValueError:
             messagebox.showerror("Error", "Jumlah harus berupa angka!")
             return
@@ -1000,3 +1262,4 @@ class ReturDialog(ctk.CTkToplevel):
             self.on_return(self.item['id'])
         else:
             messagebox.showerror("Error", result['message'])
+

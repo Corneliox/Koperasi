@@ -92,19 +92,23 @@ def preview_excel_data(filepath: str, sheet_name: str = None, max_rows: int = 20
 
 
 def import_inventory_from_excel(filepath: str, category_context: str, 
-                                 current_user: str = "admin") -> dict:
+                                 current_user: str = "admin", sheet_name: str = None) -> dict:
     """
     Import inventory from Excel file
     
     :param filepath: Path to Excel file
     :param category_context: 'SEMBAKO' or 'TAKTIKAL'
     :param current_user: User performing import
+    :param sheet_name: Specific sheet to import
     :return: Result dict with success status and counts
     """
     try:
         # Load workbook to check format
         wb = load_workbook(filepath, read_only=True)
-        ws = wb.active
+        if sheet_name:
+            ws = wb[sheet_name]
+        else:
+            ws = wb.active
         
         # Check for title row (Row 1)
         title_cell = ws['A1'].value
@@ -119,10 +123,16 @@ def import_inventory_from_excel(filepath: str, category_context: str,
         
         # Try reading with header at row 3 (0-indexed: skiprows=3)
         try:
-            df = pd.read_excel(filepath, skiprows=3, engine='openpyxl')
+            if sheet_name:
+                df = pd.read_excel(filepath, sheet_name=sheet_name, skiprows=3, engine='openpyxl')
+            else:
+                df = pd.read_excel(filepath, skiprows=3, engine='openpyxl')
         except:
             # Fallback: try reading without skipping
-            df = pd.read_excel(filepath, engine='openpyxl')
+            if sheet_name:
+                df = pd.read_excel(filepath, sheet_name=sheet_name, engine='openpyxl')
+            else:
+                df = pd.read_excel(filepath, engine='openpyxl')
         
         if df is None or df.empty:
             return {"success": False, "message": "File Excel kosong atau format tidak valid"}
