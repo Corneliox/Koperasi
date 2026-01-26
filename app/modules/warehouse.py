@@ -3,7 +3,8 @@ Warehouse Module - CRUD Operations with Mutation Tracking
 All operations are filtered by category_context (SEMBAKO/TAKTIKAL)
 """
 from datetime import datetime
-from app.database.connection import get_connection, log_activity
+from app.database.connection import get_connection
+from app.utils.audit_log import log_audit
 
 
 class WarehouseManager:
@@ -101,10 +102,11 @@ class WarehouseManager:
         conn.close()
         
         # Log activity
-        log_activity(
-            self.current_user, 
-            "TAMBAH_BARANG",
-            f"Menambah barang: {name}, Stok: {stock}, Kategori: {self.category_context}"
+        log_audit(
+            self.current_user, "INVENTORY", "CREATE",
+            "warehouse", item_id, None, 
+            {"name": name, "stock": stock, "category": self.category_context},
+            f"Menambah barang: {name}, Stok: {stock}", "INFO"
         )
         
         return item_id
@@ -149,10 +151,11 @@ class WarehouseManager:
         conn.close()
         
         # Log activity
-        log_activity(
-            self.current_user,
-            "EDIT_BARANG",
-            f"Edit barang ID {item_id}: {name}, Stok: {old_stock} -> {stock}"
+        log_audit(
+            self.current_user, "INVENTORY", "UPDATE",
+            "warehouse", item_id, old_item, 
+            {"name": name, "stock": stock},
+            f"Edit barang ID {item_id}: {name}, Stok: {old_stock} -> {stock}", "INFO"
         )
         
         return True
@@ -172,10 +175,10 @@ class WarehouseManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "HAPUS_BARANG",
-            f"Hapus barang: {item['name']} (ID: {item_id})"
+        log_audit(
+            self.current_user, "INVENTORY", "DELETE",
+            "warehouse", item_id, item, None,
+            f"Hapus barang: {item['name']} (ID: {item_id})", "WARNING"
         )
         
         return True
@@ -223,10 +226,11 @@ class WarehouseManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "PENJUALAN",
-            f"Jual {item['name']} x{qty} = Rp {total_price:,.0f}"
+        log_audit(
+            self.current_user, "TRANSACTION", "CREATE",
+            "warehouse", item_id, 
+            {"stock": item['stock']}, {"stock": new_stock},
+            f"Jual {item['name']} x{qty} = Rp {total_price:,.0f} ({payment_method})", "INFO"
         )
         
         return {
@@ -269,10 +273,11 @@ class WarehouseManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "RETUR_BARANG",
-            f"Retur {item['name']} x{qty}. Alasan: {reason}"
+        log_audit(
+            self.current_user, "INVENTORY", "RETURN",
+            "warehouse", item_id, 
+            {"stock": item['stock']}, {"stock": new_stock},
+            f"Retur {item['name']} x{qty}. Alasan: {reason}", "WARNING"
         )
         
         return {
@@ -306,10 +311,11 @@ class WarehouseManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "TAMBAH_STOK",
-            f"Tambah stok {item['name']}: +{qty} (Total: {new_stock})"
+        log_audit(
+            self.current_user, "INVENTORY", "UPDATE",
+            "warehouse", item_id, 
+            {"stock": item['stock']}, {"stock": new_stock},
+            f"Tambah stok {item['name']}: +{qty} (Total: {new_stock})", "INFO"
         )
         
         return {"success": True, "message": "Stok berhasil ditambah", "new_stock": new_stock}

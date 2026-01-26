@@ -3,7 +3,8 @@ Members Module - CRUD Operations for Anggota Koperasi
 REFACTORED: Added fuzzy search integration, autocomplete support
 """
 from difflib import SequenceMatcher
-from app.database.connection import get_connection, log_activity
+from app.database.connection import get_connection
+from app.utils.audit_log import log_audit
 
 
 class MemberManager:
@@ -167,10 +168,11 @@ class MemberManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "TAMBAH_ANGGOTA",
-            f"Menambah anggota: {name} (NRP: {nrp})"
+        log_audit(
+            self.current_user, "MEMBER", "CREATE",
+            "member", member_id, None,
+            {"name": name, "nrp": nrp, "rank": rank, "unit": unit},
+            f"Menambah anggota: {name} (NRP: {nrp})", "INFO"
         )
         
         return {"success": True, "message": "Anggota berhasil ditambah", "id": member_id}
@@ -200,10 +202,10 @@ class MemberManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "EDIT_ANGGOTA",
-            f"Edit anggota ID {member_id}: {name}"
+        log_audit(
+            self.current_user, "MEMBER", "UPDATE",
+            "member", member_id, None, None,
+            f"Edit anggota ID {member_id}: {name}", "INFO"
         )
         
         return {"success": True, "message": "Data anggota berhasil diupdate"}
@@ -230,10 +232,10 @@ class MemberManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "HAPUS_ANGGOTA",
-            f"Hapus anggota: {member['name']} (ID: {member_id})"
+        log_audit(
+            self.current_user, "MEMBER", "DELETE",
+            "member", member_id, member, None,
+            f"Hapus anggota: {member['name']} (ID: {member_id})", "WARNING"
         )
         
         return {"success": True, "message": "Anggota berhasil dihapus"}

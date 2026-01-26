@@ -5,7 +5,7 @@ Stored in separate table for security
 """
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.database.connection import get_connection
 
 
@@ -28,9 +28,16 @@ def init_audit_log_table():
             new_value TEXT,
             details TEXT,
             ip_address TEXT,
-            session_id TEXT
+            session_id TEXT,
+            level TEXT DEFAULT 'INFO'
         )
     """)
+    
+    # Migration: Add level column if not exists
+    try:
+        cursor.execute("ALTER TABLE audit_log_immutable ADD COLUMN level TEXT DEFAULT 'INFO'")
+    except:
+        pass
     
     # Create index for faster queries
     cursor.execute("""
@@ -45,6 +52,10 @@ def init_audit_log_table():
         CREATE INDEX IF NOT EXISTS idx_audit_user 
         ON audit_log_immutable(user)
     """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_audit_level 
+        ON audit_log_immutable(level)
+    """)
     
     conn.commit()
     conn.close()
@@ -53,7 +64,7 @@ def init_audit_log_table():
 def log_audit(user: str, action_category: str, action_type: str,
               entity_type: str = None, entity_id: int = None,
               old_value: dict = None, new_value: dict = None,
-              details: str = None):
+              details: str = None, level: str = 'INFO'):
     """
     Log an immutable audit record
     
@@ -65,6 +76,7 @@ def log_audit(user: str, action_category: str, action_type: str,
     :param old_value: Previous value (dict, will be JSON serialized)
     :param new_value: New value (dict, will be JSON serialized)
     :param details: Additional details string
+    :param level: INFO, WARNING, DANGER, ERROR
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -76,10 +88,10 @@ def log_audit(user: str, action_category: str, action_type: str,
     cursor.execute("""
         INSERT INTO audit_log_immutable 
         (user, action_category, action_type, entity_type, entity_id, 
-         old_value, new_value, details)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         old_value, new_value, details, level)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (user, action_category, action_type, entity_type, entity_id,
-          old_json, new_json, details))
+          old_json, new_json, details, level))
     
     conn.commit()
     conn.close()
@@ -88,7 +100,7 @@ def log_audit(user: str, action_category: str, action_type: str,
 def get_audit_logs(limit: int = 500, user_filter: str = None,
                    category_filter: str = None, entity_type: str = None,
                    entity_id: int = None, start_date: str = None,
-                   end_date: str = None) -> list:
+                   end_date: str = None, level_filter: str = None) -> list:
     """
     Retrieve audit logs (READ ONLY - no delete available)
     
@@ -123,6 +135,10 @@ def get_audit_logs(limit: int = 500, user_filter: str = None,
     if end_date:
         query += " AND DATE(timestamp) <= ?"
         params.append(end_date)
+        
+    if level_filter:
+        query += " AND level = ?"
+        params.append(level_filter)
     
     query += f" ORDER BY timestamp DESC LIMIT {limit}"
     
@@ -145,6 +161,64 @@ def get_audit_logs(limit: int = 500, user_filter: str = None,
     
     conn.close()
     return logs
+
+
+def archive_old_logs(days: int = 90) -> dict:
+    """
+    Archive logs older than N days to JSON file and delete from DB
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+    
+    # Select logs to archive
+    cursor.execute(
+        "SELECT * FROM audit_log_immutable WHERE DATE(timestamp) < ?",
+        (cutoff_date,)
+    )
+    logs_to_archive = [dict(row) for row in cursor.fetchall()]
+    
+    if not logs_to_archive:
+        conn.close()
+        return {"success": True, "count": 0, "message": "No logs to archive"}
+    
+    # Ensure directory exists
+    archive_dir = os.path.join(os.getcwd(), "logs", "archive")
+    os.makedirs(archive_dir, exist_ok=True)
+    
+    filename = f"audit_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filepath = os.path.join(archive_dir, filename)
+    
+    try:
+        with open(filepath, 'w') as f:
+            json.dump(logs_to_archive, f, indent=2, default=str)
+            
+        # Delete archived logs
+        cursor.execute(
+            "DELETE FROM audit_log_immutable WHERE DATE(timestamp) < ?",
+            (cutoff_date,)
+        )
+        conn.commit()
+        
+        # Log the archiving event (recursion safe: new log is recent)
+        log_audit(
+            "SYSTEM", "SYSTEM", "ARCHIVE",
+            old_value={"count": len(logs_to_archive)},
+            details=f"Archived {len(logs_to_archive)} logs to {filename}",
+            level="WARNING"
+        )
+        
+        return {
+            "success": True,
+            "count": len(logs_to_archive),
+            "filepath": filepath
+        }
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": str(e)}
+    finally:
+        conn.close()
 
 
 def get_entity_history(entity_type: str, entity_id: int) -> list:

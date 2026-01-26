@@ -732,7 +732,7 @@ class ImportPreviewDialog(ctk.CTkToplevel):
                         msg += "\n\nPeringatan (sebagian):\n" + "\n".join(result['warnings'])
                         
                     messagebox.showinfo("Sukses", msg)
-                    self.on_import_complete()
+                    self.on_complete()
                 else:
                     messagebox.showerror("Error", f"Gagal import: {result['message']}")
                     

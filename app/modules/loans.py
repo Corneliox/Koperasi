@@ -3,7 +3,8 @@ Loans Module - Advanced Loan Management for Members
 REFACTORED: Added simulation engine, near-due tracking, phone display
 """
 from datetime import datetime, timedelta
-from app.database.connection import get_connection, log_activity
+from app.database.connection import get_connection
+from app.utils.audit_log import log_audit
 
 
 class LoanManager:
@@ -192,11 +193,12 @@ class LoanManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "BUAT_PINJAMAN",
+        log_audit(
+            self.current_user, "LOAN", "CREATE",
+            "loan", loan_id, None,
+            {"member_id": member_id, "amount": amount, "total": total_amount},
             f"Pinjaman baru untuk {member['name']}: Rp {amount:,.0f} "
-            f"(Total: Rp {total_amount:,.0f}, Cicilan: Rp {monthly_payment:,.0f}/bln)"
+            f"(Total: Rp {total_amount:,.0f}, Cicilan: Rp {monthly_payment:,.0f}/bln)", "INFO"
         )
         
         return {
@@ -245,10 +247,12 @@ class LoanManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "BAYAR_PINJAMAN",
-            f"Pembayaran pinjaman ID {loan_id}: Rp {amount:,.0f} via {payment_method}"
+        log_audit(
+            self.current_user, "LOAN", "UPDATE",
+            "loan", loan_id, 
+            {"paid": loan['paid_amount'], "status": loan['status']},
+            {"paid": new_paid, "status": new_status},
+            f"Pembayaran pinjaman ID {loan_id}: Rp {amount:,.0f} via {payment_method}", "INFO"
         )
         
         remaining_after = remaining - amount
@@ -294,10 +298,11 @@ class LoanManager:
         conn.commit()
         conn.close()
         
-        log_activity(
-            self.current_user,
-            "PINJAMAN_MACET",
-            f"Pinjaman ID {loan_id} ditandai macet"
+        log_audit(
+            self.current_user, "LOAN", "UPDATE",
+            "loan", loan_id, 
+            {"status": loan['status']}, {"status": "Macet"},
+            f"Pinjaman ID {loan_id} ditandai macet", "WARNING"
         )
         
         return {"success": True, "message": "Pinjaman ditandai sebagai macet"}
@@ -335,3 +340,4 @@ class LoanManager:
             "bad_debt_amount": bad_debt_amount,
             "paid_this_month": paid_this_month
         }
+

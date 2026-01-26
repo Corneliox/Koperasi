@@ -57,12 +57,19 @@ class AuditLogViewer(ctk.CTkToplevel):
             text_color="#00d4ff"
         ).pack(side="left", padx=20, pady=15)
         
+        # Archive Button
+        ctk.CTkButton(
+            header, text="🗄️ Archive Logs", width=120, height=32,
+            fg_color="#f59e0b", hover_color="#d97706",
+            text_color="#000", command=self.archive_logs
+        ).pack(side="right", padx=20, pady=15)
+        
         # Warning badge
         ctk.CTkLabel(
-            header, text="🔒 READ-ONLY - Data tidak dapat dihapus",
+            header, text="🔒 READ-ONLY",
             font=ctk.CTkFont(size=11),
             text_color="#f59e0b"
-        ).pack(side="right", padx=20, pady=15)
+        ).pack(side="right", padx=5, pady=15)
     
     def create_filters(self):
         """Create filter controls"""
@@ -77,6 +84,17 @@ class AuditLogViewer(ctk.CTkToplevel):
             values=["Semua", "INVENTORY", "MEMBER", "LOAN", "TRANSACTION", "SYSTEM"],
             variable=self.category_var,
             width=130, height=32,
+            fg_color="#374151", button_color="#4b5563"
+        ).pack(side="left", padx=5, pady=10)
+        
+        # Level filter
+        ctk.CTkLabel(filter_frame, text="Level:", text_color="#ccc").pack(side="left", padx=(15, 5), pady=10)
+        self.level_var = ctk.StringVar(value="Semua")
+        ctk.CTkOptionMenu(
+            filter_frame,
+            values=["Semua", "INFO", "WARNING", "DANGER", "ERROR"],
+            variable=self.level_var,
+            width=100, height=32,
             fg_color="#374151", button_color="#4b5563"
         ).pack(side="left", padx=5, pady=10)
         
@@ -127,7 +145,7 @@ class AuditLogViewer(ctk.CTkToplevel):
         header.grid_propagate(False)
         
         columns = [
-            ("ID", 50), ("Waktu", 140), ("User", 80), ("Kategori", 100),
+            ("ID", 50), ("Waktu", 140), ("User", 80), ("Level", 80), ("Kategori", 100),
             ("Aksi", 80), ("Entitas", 80), ("Detail", 350)
         ]
         
@@ -154,20 +172,22 @@ class AuditLogViewer(ctk.CTkToplevel):
         
         # Get filter values
         category = self.category_var.get()
+        level = self.level_var.get()
         user = self.user_filter.get().strip()
         limit = int(self.limit_var.get())
         
         logs = get_audit_logs(
             limit=limit,
             user_filter=user if user else None,
-            category_filter=category if category != "Semua" else None
+            category_filter=category if category != "Semua" else None,
+            level_filter=level if level != "Semua" else None
         )
         
         if not logs:
             ctk.CTkLabel(
                 self.scroll_frame, text="Tidak ada data log",
                 font=ctk.CTkFont(size=14), text_color="#888"
-            ).grid(row=0, column=0, columnspan=7, pady=50)
+            ).grid(row=0, column=0, columnspan=8, pady=50)
             self.stats_label.configure(text="Total: 0 log")
             return
         
@@ -185,10 +205,10 @@ class AuditLogViewer(ctk.CTkToplevel):
         bg = "#1e293b" if idx % 2 == 0 else "#16213e"
         
         row = ctk.CTkFrame(self.scroll_frame, fg_color=bg, height=35, corner_radius=3)
-        row.grid(row=idx, column=0, columnspan=7, sticky="ew", pady=1)
+        row.grid(row=idx, column=0, columnspan=8, sticky="ew", pady=1)
         row.grid_propagate(False)
         
-        widths = [50, 140, 80, 100, 80, 80, 350]
+        widths = [50, 140, 80, 80, 100, 80, 80, 350]
         for i, w in enumerate(widths):
             row.grid_columnconfigure(i, minsize=w)
         
@@ -199,6 +219,14 @@ class AuditLogViewer(ctk.CTkToplevel):
             "LOAN": "#f59e0b",
             "TRANSACTION": "#8b5cf6",
             "SYSTEM": "#ef4444"
+        }
+        
+        # Level colors
+        level_colors = {
+            "INFO": "#cccccc",
+            "WARNING": "#f59e0b",
+            "DANGER": "#ef4444",
+            "ERROR": "#ef4444"
         }
         
         # ID
@@ -217,30 +245,75 @@ class AuditLogViewer(ctk.CTkToplevel):
                      font=ctk.CTkFont(size=9), text_color="#00d4ff"
                      ).grid(row=0, column=2, padx=3, pady=6, sticky="w")
         
+        # Level
+        lvl = log.get('level', 'INFO')
+        lvl_color = level_colors.get(lvl, "#ccc")
+        ctk.CTkLabel(row, text=lvl, width=widths[3],
+                     font=ctk.CTkFont(size=9, weight="bold"), text_color=lvl_color
+                     ).grid(row=0, column=3, padx=3, pady=6, sticky="w")
+        
         # Category
         cat = log.get('action_category', '-')
         cat_color = cat_colors.get(cat, "#888")
-        ctk.CTkLabel(row, text=cat, width=widths[3],
+        ctk.CTkLabel(row, text=cat, width=widths[4],
                      font=ctk.CTkFont(size=9, weight="bold"), text_color=cat_color
-                     ).grid(row=0, column=3, padx=3, pady=6, sticky="w")
+                     ).grid(row=0, column=4, padx=3, pady=6, sticky="w")
         
         # Action type
-        ctk.CTkLabel(row, text=log.get('action_type', '-'), width=widths[4],
+        ctk.CTkLabel(row, text=log.get('action_type', '-'), width=widths[5],
                      font=ctk.CTkFont(size=9), text_color="#ccc"
-                     ).grid(row=0, column=4, padx=3, pady=6, sticky="w")
+                     ).grid(row=0, column=5, padx=3, pady=6, sticky="w")
         
         # Entity
         entity = f"{log.get('entity_type', '-')[:8]}:{log.get('entity_id', '')}" if log.get('entity_id') else '-'
-        ctk.CTkLabel(row, text=entity[:12], width=widths[5],
+        ctk.CTkLabel(row, text=entity[:12], width=widths[6],
                      font=ctk.CTkFont(size=9), text_color="#888"
-                     ).grid(row=0, column=5, padx=3, pady=6, sticky="w")
+                     ).grid(row=0, column=6, padx=3, pady=6, sticky="w")
         
         # Details
         details = log.get('details', '-') or '-'
-        ctk.CTkLabel(row, text=details[:60], width=widths[6],
+        ctk.CTkLabel(row, text=details[:60], width=widths[7],
                      font=ctk.CTkFont(size=9), text_color="#ccc"
-                     ).grid(row=0, column=6, padx=3, pady=6, sticky="w")
+                     ).grid(row=0, column=7, padx=3, pady=6, sticky="w")
     
+    def archive_logs(self):
+        """Archive old logs to file and clear from DB"""
+        if not messagebox.askyesno("Archive Logs", "Arsipkan log lama ke file JSON dan hapus dari database?"):
+            return
+            
+        dialog = ctk.CTkInputDialog(
+            text="Masukkan umur log (hari) untuk diarsipkan:\n(Default: 90 hari)",
+            title="Archive Config"
+        )
+        days_str = dialog.get_input()
+        
+        if not days_str:
+            return
+            
+        try:
+            days = int(days_str)
+            if days < 1:
+                raise ValueError
+        except:
+            messagebox.showerror("Error", "Masukkan angka valid (min 1 hari)")
+            return
+            
+        from app.utils.audit_log import archive_old_logs
+        result = archive_old_logs(days)
+        
+        if result['success']:
+            if result['count'] > 0:
+                messagebox.showinfo(
+                    "Sukses", 
+                    f"Berhasil mengarsipkan {result['count']} log.\n\n"
+                    f"File tersimpan di:\n{result['filepath']}"
+                )
+                self.load_data()
+            else:
+                messagebox.showinfo("Info", "Tidak ada log yang memenuhi kriteria untuk diarsipkan.")
+        else:
+            messagebox.showerror("Error", f"Gagal mengarsipkan log: {result['message']}")
+
     def refresh_data(self):
         """Refresh with default filters"""
         self.category_var.set("Semua")

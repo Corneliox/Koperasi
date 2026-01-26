@@ -21,7 +21,8 @@ if sys.platform == 'win32':
             pass
 
 import customtkinter as ctk
-from app.database.connection import init_database, log_activity
+from app.database.connection import init_database
+from app.utils.audit_log import log_audit
 from app.ui.login_frame import LoginFrame
 from app.ui.category_select_frame import CategorySelectFrame, ChangeDivisionDialog
 from app.ui.dashboard_frame import DashboardFrame
@@ -116,10 +117,10 @@ class KoperasiBrimobApp(ctk.CTk):
     def on_category_selected(self, category: str):
         """Handle category selection"""
         self.category_context = category
-        log_activity(
-            self.current_user,
-            "PILIH_KATEGORI",
-            f"User memilih kategori: {category}"
+        log_audit(
+            self.current_user, "SYSTEM", "LOGIN",
+            None, None, None, None,
+            f"User memilih kategori: {category}", "INFO"
         )
         self.show_main_app()
     
@@ -294,10 +295,10 @@ class KoperasiBrimobApp(ctk.CTk):
         
         if new_division != self.category_context:
             self.category_context = new_division
-            log_activity(
-                self.current_user,
-                "GANTI_DIVISI",
-                f"User ganti divisi ke: {new_division}"
+            log_audit(
+                self.current_user, "SYSTEM", "UPDATE",
+                None, None, None, None,
+                f"User ganti divisi ke: {new_division}", "INFO"
             )
             # Reload main app with new division
             self.show_main_app()
@@ -395,7 +396,11 @@ class KoperasiBrimobApp(ctk.CTk):
     
     def logout(self):
         """Logout and return to login"""
-        log_activity(self.current_user, "LOGOUT", f"User {self.current_user} logout")
+        log_audit(
+            self.current_user, "SYSTEM", "LOGOUT",
+            None, None, None, None,
+            f"User {self.current_user} logout", "INFO"
+        )
         self.show_login()
     
     def on_user_icon_click(self, event):
