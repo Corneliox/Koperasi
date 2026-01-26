@@ -78,22 +78,23 @@ class MembersFrame(ctk.CTkFrame):
         self.header_row.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
         self.header_row.grid_propagate(False)
         
-        columns = [
-            ("ID", 60),
-            ("Nama", 200),
-            ("Pangkat", 120),
-            ("Satuan", 150),
-            ("NRP", 120),
-            ("Telepon", 130),
-            ("Aksi", 150)
+        # Column config: (name, min_width, weight)
+        self.columns_config = [
+            ("ID", 50, 0),
+            ("Nama", 200, 3),    # Stretches most
+            ("Pangkat", 100, 1), # Stretches a bit
+            ("Satuan", 120, 1),  # Stretches a bit
+            ("NRP", 100, 0),
+            ("Telepon", 110, 0),
+            ("Aksi", 120, 0)
         ]
         
-        for i, (text, width) in enumerate(columns):
-            self.header_row.grid_columnconfigure(i, minsize=width)
+        for i, (text, width, weight) in enumerate(self.columns_config):
+            self.header_row.grid_columnconfigure(i, minsize=width, weight=weight)
             label = ctk.CTkLabel(
                 self.header_row, text=text,
                 font=ctk.CTkFont(size=12, weight="bold"),
-                text_color="#00d4ff", width=width
+                text_color="#00d4ff"
             )
             label.grid(row=0, column=i, padx=5, pady=10, sticky="w")
         
@@ -103,8 +104,8 @@ class MembersFrame(ctk.CTkFrame):
         )
         self.scroll_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         
-        for i, (_, width) in enumerate(columns):
-            self.scroll_frame.grid_columnconfigure(i, minsize=width)
+        for i, (_, width, weight) in enumerate(self.columns_config):
+            self.scroll_frame.grid_columnconfigure(i, minsize=width, weight=weight)
     
     def load_data(self, search_term: str = None):
         """Load members into table"""
@@ -132,37 +133,36 @@ class MembersFrame(ctk.CTkFrame):
         row_frame.grid(row=row_idx, column=0, columnspan=7, sticky="ew", pady=1)
         row_frame.grid_propagate(False)
         
-        widths = [60, 200, 120, 150, 120, 130, 150]
-        for i, width in enumerate(widths):
-            row_frame.grid_columnconfigure(i, minsize=width)
+        for i, (_, width, weight) in enumerate(self.columns_config):
+            row_frame.grid_columnconfigure(i, minsize=width, weight=weight)
         
         # Data cells
-        ctk.CTkLabel(row_frame, text=str(member['id']), width=widths[0],
+        ctk.CTkLabel(row_frame, text=str(member['id']),
                      font=ctk.CTkFont(size=11), text_color="#cccccc"
                      ).grid(row=0, column=0, padx=5, pady=8, sticky="w")
         
-        ctk.CTkLabel(row_frame, text=member['name'][:25], width=widths[1],
+        ctk.CTkLabel(row_frame, text=member['name'][:25],
                      font=ctk.CTkFont(size=11), text_color="#ffffff"
                      ).grid(row=0, column=1, padx=5, pady=8, sticky="w")
         
-        ctk.CTkLabel(row_frame, text=member.get('rank', '-') or '-', width=widths[2],
+        ctk.CTkLabel(row_frame, text=member.get('rank', '-') or '-',
                      font=ctk.CTkFont(size=11), text_color="#cccccc"
                      ).grid(row=0, column=2, padx=5, pady=8, sticky="w")
         
-        ctk.CTkLabel(row_frame, text=member.get('unit', '-') or '-', width=widths[3],
+        ctk.CTkLabel(row_frame, text=member.get('unit', '-') or '-',
                      font=ctk.CTkFont(size=11), text_color="#cccccc"
                      ).grid(row=0, column=3, padx=5, pady=8, sticky="w")
         
-        ctk.CTkLabel(row_frame, text=member.get('nrp', '-') or '-', width=widths[4],
+        ctk.CTkLabel(row_frame, text=member.get('nrp', '-') or '-',
                      font=ctk.CTkFont(size=11), text_color="#00d4ff"
                      ).grid(row=0, column=4, padx=5, pady=8, sticky="w")
         
-        ctk.CTkLabel(row_frame, text=member.get('phone', '-') or '-', width=widths[5],
+        ctk.CTkLabel(row_frame, text=member.get('phone', '-') or '-',
                      font=ctk.CTkFont(size=11), text_color="#cccccc"
                      ).grid(row=0, column=5, padx=5, pady=8, sticky="w")
         
         # Action buttons
-        action_frame = ctk.CTkFrame(row_frame, fg_color="transparent", width=widths[6])
+        action_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
         action_frame.grid(row=0, column=6, padx=5, pady=5, sticky="w")
         
         edit_btn = ctk.CTkButton(

@@ -53,7 +53,7 @@ class LoansFrame(ctk.CTkFrame):
         # Filter dropdown
         self.status_var = ctk.StringVar(value="Semua")
         ctk.CTkOptionMenu(
-            btn_frame, values=["Semua", "Aktif", "Lunas"],
+            btn_frame, values=["Semua", "Aktif", "Lunas", "Macet"],
             variable=self.status_var, width=100, height=35,
             fg_color="#374151", button_color="#4b5563",
             command=lambda v: self.load_data()
@@ -115,22 +115,31 @@ class LoansFrame(ctk.CTkFrame):
         self.table_container.grid_columnconfigure(0, weight=1)
         self.table_container.grid_rowconfigure(1, weight=1)
         
-        # Header row
+        # Header row - Added padding on right to account for scrollbar
         self.header_row = ctk.CTkFrame(self.table_container, fg_color="#16213e", height=45)
-        self.header_row.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
+        self.header_row.grid(row=0, column=0, sticky="ew", padx=(5, 20), pady=(5, 0))
         self.header_row.grid_propagate(False)
         
         # Columns: ID, Nama, Telepon, Jumlah, Bunga, Total, Cicilan/bln, Progress, Jatuh Tempo, Status, Aksi
-        columns = [
-            ("ID", 45), ("Nama", 130), ("Telepon", 100), ("Pokok", 90),
-            ("Bunga", 55), ("Total", 95), ("Cicilan", 80), ("Progress", 100),
-            ("Jatuh Tempo", 90), ("Status", 65), ("Aksi", 100)
+        # Config: (name, min_width, weight)
+        self.columns_config = [
+            ("ID", 40, 0),
+            ("Nama", 150, 3),      # Stretches most
+            ("Telepon", 100, 0),
+            ("Pokok", 90, 1),      # Stretches a bit
+            ("Bunga", 50, 0),
+            ("Total", 95, 1),      # Stretches a bit
+            ("Cicilan", 80, 1),
+            ("Progress", 100, 1),
+            ("Jatuh Tempo", 90, 0),
+            ("Status", 70, 0),
+            ("Aksi", 130, 0)       # Increased width
         ]
         
-        for i, (text, width) in enumerate(columns):
-            self.header_row.grid_columnconfigure(i, minsize=width)
+        for i, (text, width, weight) in enumerate(self.columns_config):
+            self.header_row.grid_columnconfigure(i, minsize=width, weight=weight)
             ctk.CTkLabel(
-                self.header_row, text=text, width=width,
+                self.header_row, text=text,
                 font=ctk.CTkFont(size=10, weight="bold"),
                 text_color="#00d4ff"
             ).grid(row=0, column=i, padx=3, pady=10, sticky="w")
@@ -141,8 +150,8 @@ class LoansFrame(ctk.CTkFrame):
         )
         self.scroll_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         
-        for i, (_, width) in enumerate(columns):
-            self.scroll_frame.grid_columnconfigure(i, minsize=width)
+        for i, (_, width, weight) in enumerate(self.columns_config):
+            self.scroll_frame.grid_columnconfigure(i, minsize=width, weight=weight)
     
     def load_data(self):
         """Load loans into table"""
@@ -157,7 +166,7 @@ class LoansFrame(ctk.CTkFrame):
         near_due = self.loan_manager.get_near_due_loans(days=14)
         
         # Update stats
-        active_loans = [loan for loan in loans if loan.get('status') == 'Aktif']
+        active_loans = [loan for loan in loans if loan.get('status') in ['Aktif', 'Macet']]
         total_amount = sum(loan.get('total_amount', 0) for loan in active_loans)
         
         self.total_loans_label.configure(text=f"Total Pinjaman: {len(loans)}")
@@ -177,7 +186,7 @@ class LoansFrame(ctk.CTkFrame):
     
     def get_due_color(self, due_date_str: str, status: str) -> str:
         """Get color based on due date proximity"""
-        if status != "Aktif" or not due_date_str:
+        if status not in ["Aktif", "Macet"] or not due_date_str:
             return "#888"
         
         try:
@@ -202,53 +211,52 @@ class LoansFrame(ctk.CTkFrame):
         row_frame.grid(row=row_idx, column=0, columnspan=11, sticky="ew", pady=1)
         row_frame.grid_propagate(False)
         
-        widths = [45, 130, 100, 90, 55, 95, 80, 100, 90, 65, 100]
-        for i, width in enumerate(widths):
-            row_frame.grid_columnconfigure(i, minsize=width)
+        for i, (_, width, weight) in enumerate(self.columns_config):
+            row_frame.grid_columnconfigure(i, minsize=width, weight=weight)
         
         # ID
-        ctk.CTkLabel(row_frame, text=str(loan['id']), width=widths[0],
+        ctk.CTkLabel(row_frame, text=str(loan['id']),
                      font=ctk.CTkFont(size=10), text_color="#cccccc"
                      ).grid(row=0, column=0, padx=3, pady=12, sticky="w")
         
         # Member name
         member_name = loan.get('member_name', '-')[:18]
-        ctk.CTkLabel(row_frame, text=member_name, width=widths[1],
+        ctk.CTkLabel(row_frame, text=member_name,
                      font=ctk.CTkFont(size=10), text_color="#ffffff"
                      ).grid(row=0, column=1, padx=3, pady=12, sticky="w")
         
         # Phone (NEW)
         phone = loan.get('member_phone', '-') or '-'
-        ctk.CTkLabel(row_frame, text=phone[:12], width=widths[2],
+        ctk.CTkLabel(row_frame, text=phone[:12],
                      font=ctk.CTkFont(size=10), text_color="#00d4ff"
                      ).grid(row=0, column=2, padx=3, pady=12, sticky="w")
         
         # Principal
         principal = loan.get('principal', 0)
-        ctk.CTkLabel(row_frame, text=f"Rp {principal:,.0f}", width=widths[3],
+        ctk.CTkLabel(row_frame, text=f"Rp {principal:,.0f}",
                      font=ctk.CTkFont(size=10), text_color="#cccccc"
                      ).grid(row=0, column=3, padx=3, pady=12, sticky="w")
         
         # Interest rate
         interest = loan.get('interest_rate', 0)
-        ctk.CTkLabel(row_frame, text=f"{interest}%", width=widths[4],
+        ctk.CTkLabel(row_frame, text=f"{interest}%",
                      font=ctk.CTkFont(size=10), text_color="#cccccc"
                      ).grid(row=0, column=4, padx=3, pady=12, sticky="w")
         
         # Total
         total = loan.get('total_amount', 0)
-        ctk.CTkLabel(row_frame, text=f"Rp {total:,.0f}", width=widths[5],
+        ctk.CTkLabel(row_frame, text=f"Rp {total:,.0f}",
                      font=ctk.CTkFont(size=10, weight="bold"), text_color="#f59e0b"
                      ).grid(row=0, column=5, padx=3, pady=12, sticky="w")
         
         # Monthly payment
         monthly = loan.get('monthly_payment', 0)
-        ctk.CTkLabel(row_frame, text=f"Rp {monthly:,.0f}", width=widths[6],
+        ctk.CTkLabel(row_frame, text=f"Rp {monthly:,.0f}",
                      font=ctk.CTkFont(size=10), text_color="#cccccc"
                      ).grid(row=0, column=6, padx=3, pady=12, sticky="w")
         
         # Progress bar (NEW)
-        progress_frame = ctk.CTkFrame(row_frame, fg_color="transparent", width=widths[7])
+        progress_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
         progress_frame.grid(row=0, column=7, padx=3, pady=8, sticky="w")
         
         paid = loan.get('paid_amount', 0)
@@ -268,22 +276,28 @@ class LoansFrame(ctk.CTkFrame):
         due_display = due_date[:10] if due_date else '-'
         due_color = self.get_due_color(due_date, loan.get('status', ''))
         
-        ctk.CTkLabel(row_frame, text=due_display, width=widths[8],
+        ctk.CTkLabel(row_frame, text=due_display,
                      font=ctk.CTkFont(size=10, weight="bold"), text_color=due_color
                      ).grid(row=0, column=8, padx=3, pady=12, sticky="w")
         
         # Status
         status = loan.get('status', 'Aktif')
-        status_color = "#4ade80" if status == "Lunas" else "#f59e0b"
-        ctk.CTkLabel(row_frame, text=status, width=widths[9],
+        if status == "Lunas":
+            status_color = "#4ade80"
+        elif status == "Macet":
+            status_color = "#ef4444"
+        else:
+            status_color = "#f59e0b"
+            
+        ctk.CTkLabel(row_frame, text=status,
                      font=ctk.CTkFont(size=10, weight="bold"), text_color=status_color
                      ).grid(row=0, column=9, padx=3, pady=12, sticky="w")
         
         # Action buttons
-        action_frame = ctk.CTkFrame(row_frame, fg_color="transparent", width=widths[10])
+        action_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
         action_frame.grid(row=0, column=10, padx=3, pady=8, sticky="w")
         
-        if status == "Aktif":
+        if status in ["Aktif", "Macet"]:
             ctk.CTkButton(
                 action_frame, text="💵", width=30, height=28,
                 fg_color="#4ade80", hover_color="#22c55e",
@@ -439,7 +453,10 @@ class LoanSimulationDialog(ctk.CTkToplevel):
     def calculate(self):
         """Calculate loan simulation"""
         try:
-            amount = float(self.amount_entry.get().replace(',', '').replace('.', ''))
+            # Robust integer parsing
+            amount_str = ''.join(filter(str.isdigit, self.amount_entry.get()))
+            amount = float(amount_str) if amount_str else 0
+            
             interest = float(self.interest_entry.get())
             duration = int(self.duration_entry.get())
         except ValueError:
@@ -659,7 +676,10 @@ class NewLoanDialog(ctk.CTkToplevel):
     def update_preview(self):
         """Update loan preview calculation"""
         try:
-            amount = float(self.amount_entry.get().replace(',', '').replace('.', ''))
+            # Robust integer parsing
+            amount_str = ''.join(filter(str.isdigit, self.amount_entry.get()))
+            amount = float(amount_str) if amount_str else 0
+            
             interest = float(self.interest_entry.get())
             duration = int(self.duration_entry.get())
             
@@ -688,7 +708,9 @@ class NewLoanDialog(ctk.CTkToplevel):
         member_id = self.member_map.get(member_display)
         
         try:
-            amount = float(self.amount_entry.get().replace(',', '').replace('.', ''))
+            amount_str = ''.join(filter(str.isdigit, self.amount_entry.get()))
+            amount = float(amount_str) if amount_str else 0
+            
             interest = float(self.interest_entry.get())
             duration = int(self.duration_entry.get())
         except ValueError:
