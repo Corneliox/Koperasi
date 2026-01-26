@@ -18,27 +18,46 @@ class WarehouseManager:
         self.category_context = category_context
         self.current_user = current_user
     
-    def get_all_items(self, search_term: str = None) -> list:
-        """Get all items filtered by category context"""
+    def get_all_items(self, search_term: str = None, limit: int = None, offset: int = 0) -> list:
+        """Get all items filtered by category context with pagination"""
         conn = get_connection()
         cursor = conn.cursor()
         
+        query = "SELECT * FROM warehouse WHERE category_type = ?"
+        params = [self.category_context]
+        
         if search_term:
-            cursor.execute(
-                """SELECT * FROM warehouse 
-                   WHERE category_type = ? AND name LIKE ?
-                   ORDER BY name""",
-                (self.category_context, f"%{search_term}%")
-            )
-        else:
-            cursor.execute(
-                "SELECT * FROM warehouse WHERE category_type = ? ORDER BY name",
-                (self.category_context,)
-            )
+            query += " AND name LIKE ?"
+            params.append(f"%{search_term}%")
+            
+        query += " ORDER BY name"
+        
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+        cursor.execute(query, params)
         
         items = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return items
+
+    def get_items_count(self, search_term: str = None) -> int:
+        """Get total count of items matching search criteria"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT COUNT(*) FROM warehouse WHERE category_type = ?"
+        params = [self.category_context]
+        
+        if search_term:
+            query += " AND name LIKE ?"
+            params.append(f"%{search_term}%")
+            
+        cursor.execute(query, params)
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
     
     def get_item_by_id(self, item_id: int) -> dict:
         """Get single item by ID"""

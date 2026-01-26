@@ -17,9 +17,9 @@ class TransactionManager:
     
     def get_transactions(self, member_id: int = None, 
                          start_date: str = None, end_date: str = None,
-                         limit: int = 500) -> list:
+                         limit: int = 500, offset: int = 0) -> list:
         """
-        Get transactions with filters
+        Get transactions with filters and pagination
         """
         conn = get_connection()
         cursor = conn.cursor()
@@ -45,12 +45,39 @@ class TransactionManager:
             query += " AND DATE(t.date) <= ?"
             params.append(end_date)
         
-        query += f" ORDER BY t.date DESC LIMIT {limit}"
+        query += " ORDER BY t.date DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         
         cursor.execute(query, params)
         transactions = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return transactions
+
+    def get_transaction_count(self, member_id: int = None, 
+                              start_date: str = None, end_date: str = None) -> int:
+        """Get total count of transactions matching filters"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT COUNT(*) FROM transactions t WHERE t.category_type = ?"
+        params = [self.category_context]
+        
+        if member_id:
+            query += " AND t.member_id = ?"
+            params.append(member_id)
+        
+        if start_date:
+            query += " AND DATE(t.date) >= ?"
+            params.append(start_date)
+        
+        if end_date:
+            query += " AND DATE(t.date) <= ?"
+            params.append(end_date)
+            
+        cursor.execute(query, params)
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
     
     def get_monthly_summary(self, year: int, month: int) -> dict:
         """Get monthly transaction summary"""

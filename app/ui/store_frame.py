@@ -20,6 +20,11 @@ class StoreFrame(ctk.CTkFrame):
         self.current_user = current_user
         self.warehouse = WarehouseManager(category_context, current_user)
         
+        # Pagination state
+        self.current_page = 1
+        self.items_per_page = 50
+        self.total_pages = 1
+        
         # Anti-duplicate window registry
         self.active_windows = {}
         
@@ -32,7 +37,7 @@ class StoreFrame(ctk.CTkFrame):
         self.create_header()
         self.create_table()
         self.load_data()
-    
+
     def create_header(self):
         """Create header with search and action buttons"""
         self.header_frame = ctk.CTkFrame(self, fg_color="#1a1a2e", corner_radius=10)
@@ -129,7 +134,7 @@ class StoreFrame(ctk.CTkFrame):
             command=self.open_add_dialog
         )
         self.add_btn.pack(side="left", padx=5)
-    
+
     def create_table(self):
         """Create scrollable table for items with responsive columns"""
         self.table_container = ctk.CTkFrame(self, fg_color="#1a1a2e", corner_radius=10)
@@ -175,14 +180,52 @@ class StoreFrame(ctk.CTkFrame):
         # Configure scroll frame columns with same weights
         for i, (_, min_width, weight) in enumerate(self.columns_config):
             self.scroll_frame.grid_columnconfigure(i, minsize=min_width, weight=weight)
-    
+            
+        # Pagination Footer
+        self.footer_frame = ctk.CTkFrame(self.table_container, fg_color="transparent", height=40)
+        self.footer_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        
+        self.prev_btn = ctk.CTkButton(
+            self.footer_frame, text="< Prev", width=80, height=28,
+            fg_color="#374151", hover_color="#4b5563",
+            command=self.prev_page, state="disabled"
+        )
+        self.prev_btn.pack(side="left", padx=10)
+        
+        self.page_label = ctk.CTkLabel(
+            self.footer_frame, text="Page 1 of 1",
+            font=ctk.CTkFont(size=12)
+        )
+        self.page_label.pack(side="left", padx=10)
+        
+        self.next_btn = ctk.CTkButton(
+            self.footer_frame, text="Next >", width=80, height=28,
+            fg_color="#374151", hover_color="#4b5563",
+            command=self.next_page, state="disabled"
+        )
+        self.next_btn.pack(side="left", padx=10)
+
     def load_data(self, search_term: str = None):
-        """Load items into table"""
+        """Load items into table with pagination"""
         # Clear existing rows
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
         
-        items = self.warehouse.get_all_items(search_term)
+        # Calculate pagination
+        total_items = self.warehouse.get_items_count(search_term)
+        self.total_pages = max(1, (total_items + self.items_per_page - 1) // self.items_per_page)
+        
+        if self.current_page > self.total_pages:
+            self.current_page = self.total_pages
+            
+        offset = (self.current_page - 1) * self.items_per_page
+        
+        items = self.warehouse.get_all_items(search_term, limit=self.items_per_page, offset=offset)
+        
+        # Update pagination controls
+        self.page_label.configure(text=f"Page {self.current_page} of {self.total_pages}")
+        self.prev_btn.configure(state="normal" if self.current_page > 1 else "disabled")
+        self.next_btn.configure(state="normal" if self.current_page < self.total_pages else "disabled")
         
         if not items:
             no_data_label = ctk.CTkLabel(
@@ -196,7 +239,19 @@ class StoreFrame(ctk.CTkFrame):
         
         for idx, item in enumerate(items):
             self.create_row(idx, item)
-    
+
+    def prev_page(self):
+        """Go to previous page"""
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.load_data(self.search_entry.get().strip())
+
+    def next_page(self):
+        """Go to next page"""
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self.load_data(self.search_entry.get().strip())
+
     def create_row(self, row_idx: int, item: dict):
         """Create a single data row with responsive layout"""
         bg_color = "#1e293b" if row_idx % 2 == 0 else "#16213e"
