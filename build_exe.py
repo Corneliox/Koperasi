@@ -12,7 +12,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Application info
 APP_NAME = "KoperasiBrimob"
 MAIN_SCRIPT = os.path.join(BASE_DIR, "main.py")
-ICON_PATH = None  # Set to your .ico file path if you have one
+ICON_PATH = os.path.join(BASE_DIR, "icon.ico")  # Set to your .ico file path if you have one
 
 # Hidden imports needed for the application
 HIDDEN_IMPORTS = [
