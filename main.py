@@ -13,12 +13,23 @@ import ctypes
 # Enable DPI awareness for Windows
 if sys.platform == 'win32':
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    except:
-        try:
+        # Check if we are on Windows 8.1 (6.3) or higher for shcore
+        # Windows 7 is 6.1, Windows 8 is 6.2
+        if sys.getwindowsversion().major > 6 or (sys.getwindowsversion().major == 6 and sys.getwindowsversion().minor >= 3):
+            try:
+                # SetProcessDpiAwareness(PROCESS_SYSTEM_DPI_AWARE=1)
+                shcore = ctypes.windll.shcore
+                # Verify argument types and values against C function signatures
+                shcore.SetProcessDpiAwareness.argtypes = [ctypes.c_int]
+                shcore.SetProcessDpiAwareness(1)
+            except Exception:
+                # Fallback to user32 if shcore fails
+                ctypes.windll.user32.SetProcessDPIAware()
+        else:
+            # Windows 7 and older
             ctypes.windll.user32.SetProcessDPIAware()
-        except:
-            pass
+    except Exception:
+        pass
 
 import customtkinter as ctk
 from app.database.connection import init_database
