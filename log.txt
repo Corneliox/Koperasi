@@ -1,0 +1,47 @@
+Run Date: 2026-02-05 10:36:41
+Operating System: Windows 11 (10.0.26100)
+Machine Architecture: AMD64
+Python Architecture: 64-bit
+------------------------------------------------------------
+Note: You are not running Windows 7.
+This check is primarily for Windows 7 users. Newer Windows versions usually have these updates built-in.
+Scanning anyway to ensure environment integrity...
+
+Scanning system requirements...
+
+Checking for KB3020369 (Servicing Stack Update)...
+   [X] KB3020369 is MISSING.
+Checking for KB4474419 (SHA-2 Code Signing Support)...
+   [X] KB4474419 is MISSING.
+Checking for KB4490628 (SHA-2 Support Update)...
+   [X] KB4490628 is MISSING.
+Checking for KB2999226 (Universal C Runtime)...
+   [X] KB2999226 is MISSING.
+------------------------------------------------------------
+
+[ATTENTION] Missing requirements detected!
+System Architecture Detected: AMD64 (x64)
+To avoid 'Update not applicable' errors, please install the missing updates in the following EXACT order:
+
+1. KB3020369 - Servicing Stack Update
+2. KB4474419 - SHA-2 Code Signing Support
+3. KB4490628 - SHA-2 Support Update
+4. KB2999226 - Universal C Runtime
+
+Installation Instructions:
+
+[STEP 2] Install KB3020369 (Servicing Stack Update)
+   - This is required before installing SHA-2 updates.
+   - Download: Search 'KB3020369 Windows 7 x64' on Microsoft Update Catalog.
+
+[STEP 3] Install SHA-2 Support Updates (KB4474419 & KB4490628)
+   - Required to install modern updates signed with SHA-2.
+   - Download: Search 'KB4474419 Windows 7 x64' and 'KB4490628 Windows 7 x64'.
+
+[STEP 4] Install KB2999226 (Universal C Runtime)
+   - The final requirement for Python applications.
+   - Link: https://www.microsoft.com/en-us/download/details.aspx?id=49077 (Select x64 version)
+
+IMPORTANT: Restart your computer after EACH step if prompted.
+
+============================================================

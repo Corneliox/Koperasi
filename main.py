@@ -9,10 +9,15 @@ PHASE 3: Added Easter Egg reset, Admin logs dropdown
 import os
 import sys
 import ctypes
+import platform
 
 # Enable DPI awareness for Windows
 if sys.platform == 'win32':
     try:
+        # Log OS Version for Debugging
+        print(f"Starting Koperasi Brimob on: {platform.system()} {platform.release()} {platform.version()} ({platform.machine()})")
+        print(f"Python: {sys.version}")
+        
         # Check if we are on Windows 8.1 (6.3) or higher for shcore
         # Windows 7 is 6.1, Windows 8 is 6.2
         if sys.getwindowsversion().major > 6 or (sys.getwindowsversion().major == 6 and sys.getwindowsversion().minor >= 3):

@@ -5,6 +5,22 @@ Builds standalone .exe for Windows 7 x32 - Windows 11 x64
 import PyInstaller.__main__
 import os
 import sys
+import platform
+
+# Architecture Check for Build Environment
+is_64bits = sys.maxsize > 2**32
+print(f"Build Environment: Python {platform.python_version()} ({'64-bit' if is_64bits else '32-bit'})")
+
+if is_64bits:
+    print("\n[WARNING] You are building with a 64-bit Python environment.")
+    print("The resulting .exe will ONLY run on 64-bit Windows.")
+    print("It will NOT run on Windows 7 32-bit.")
+    print("To build for 32-bit Windows, you must install and use a 32-bit version of Python.")
+    user_input = input("Do you want to continue anyway? (y/n): ")
+    if user_input.lower() != 'y':
+        sys.exit(1)
+else:
+    print("[INFO] Building with 32-bit Python. This is compatible with Windows 7 32-bit.\n")
 
 # Get the directory where the script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
