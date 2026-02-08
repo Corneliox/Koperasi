@@ -50,6 +50,9 @@ HIDDEN_IMPORTS = [
     # Database
     'sqlite3',
     
+    # System
+    'subprocess', 
+    
     # Data Processing
     'pandas',
     'pandas.io.formats.excel',

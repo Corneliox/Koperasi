@@ -10,12 +10,15 @@ import os
 import sys
 import ctypes
 import platform
+import subprocess
+import tkinter.messagebox
 
 # Enable DPI awareness for Windows
 if sys.platform == 'win32':
     try:
         # Log OS Version for Debugging
         print(f"Starting Koperasi Brimob on: {platform.system()} {platform.release()} {platform.version()} ({platform.machine()})")
+        print(f"Python: {sys.version}")
         print(f"Python: {sys.version}")
         
         # Check if we are on Windows 8.1 (6.3) or higher for shcore
@@ -61,6 +64,12 @@ class KoperasiBrimobApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         
+        # Win7 Compatibility: Force Theme
+        # Windows 7 has issues with "system" theme detection
+        win_ver = sys.getwindowsversion()
+        if win_ver.major == 6 and win_ver.minor == 1:
+            ctk.set_appearance_mode("Dark") # Force Dark mode on Win7 to avoid bugs
+        
         # Initialize database
         init_database()
         
@@ -79,9 +88,16 @@ class KoperasiBrimobApp(ctk.CTk):
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2 - 30
         
+        # Win7 Compatibility: Force update before geometry
+        self.update_idletasks()
+        
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.minsize(1000, 600)
         
+        # Win7 Compatibility: Re-apply geometry after a short delay to ensure it sticks
+        if win_ver.major == 6 and win_ver.minor == 1:
+            self.after(100, lambda: self.geometry(f"{window_width}x{window_height}+{x}+{y}"))
+
         # Configure main grid
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)

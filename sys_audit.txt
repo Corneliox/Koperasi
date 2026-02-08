@@ -1,0 +1,5 @@
+[LOG] Diagnostic started at Sun 02/08/2026 11:26:44.44 
+[INFO] OS Version: 10.0 
+[INFO] Architecture: 64-bit 
+OS Name:                       Microsoft Windows 11 Pro
+OS Version:                    10.0.26100 N/A Build 26100

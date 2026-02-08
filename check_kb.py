@@ -124,7 +124,15 @@ def main():
             "required": True
         })
 
-    # 2. KB3020369
+    # 2. KB2533623 (Critical for ctypes/PyInstaller)
+    checks.append({
+        "check": lambda: check_kb("KB2533623", "Insecure Library Loading Update"),
+        "id": "KB2533623",
+        "name": "Insecure Library Loading Update (Fixes WinError 87)",
+        "required": True
+    })
+
+    # 3. KB3020369
     checks.append({
         "check": lambda: check_kb("KB3020369", "Servicing Stack Update"),
         "id": "KB3020369",
@@ -184,6 +192,11 @@ def main():
         if any(x['id'] == 'SP1' for x in missing_items):
              log_print("\n[STEP 1] Install Windows 7 Service Pack 1")
              log_print("   - Ensure your Windows Update is working or download SP1 manually from Microsoft Catalog.")
+
+        if any(x['id'] == 'KB2533623' for x in missing_items):
+             log_print("\n[STEP 2] Install KB2533623 (Insecure Library Loading Update)")
+             log_print("   - CRITICAL: This fixes the 'WinError 87' crash at startup.")
+             log_print(f"   - Download: Search 'KB2533623 Windows 7 {arch}' on Microsoft Update Catalog.")
 
         if any(x['id'] == 'KB3020369' for x in missing_items):
              log_print("\n[STEP 2] Install KB3020369 (Servicing Stack Update)")

@@ -1,7 +1,7 @@
-Run Date: 2026-02-05 10:36:41
-Operating System: Windows 11 (10.0.26100)
+Run Date: 2026-02-08 11:23:35
+Operating System: Windows 10 (10.0.26100)
 Machine Architecture: AMD64
-Python Architecture: 64-bit
+Python Architecture: 32-bit
 ------------------------------------------------------------
 Note: You are not running Windows 7.
 This check is primarily for Windows 7 users. Newer Windows versions usually have these updates built-in.

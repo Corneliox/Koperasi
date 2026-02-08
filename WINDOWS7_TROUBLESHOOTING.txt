@@ -1,0 +1,38 @@
+TROUBLESHOOTING WINDOWS 7 - WinError 87
+==========================================
+
+Problem:
+--------
+When running the compiled executable on Windows 7, you receive the following error:
+Traceback (most recent call last):
+  ...
+  File "PyInstaller\loader\pyiboot01_bootstrap.py", line 78, in <module>
+  File "PyInstaller\loader\pyimod03_ctypes.py", line 27, in install
+  ...
+OSError: [WinError 87] The parameter is incorrect
+
+Cause:
+------
+This error is caused by a missing Windows security update (KB2533623).
+Modern Python (3.8+) and PyInstaller use the `LoadLibraryEx` function with secure flags (LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, etc.) to prevent DLL hijacking. 
+These flags were introduced in KB2533623. If this update is missing, Windows 7 does not recognize the flags and returns "The parameter is incorrect" (WinError 87).
+
+Solution:
+---------
+1. Run the included `check_kb.py` script on the target Windows 7 machine.
+   It has been updated to detect this specific missing update.
+
+2. Install **KB2533623** manually.
+   - Go to the Microsoft Update Catalog (https://www.catalog.update.microsoft.com/Home.aspx)
+   - Search for "KB2533623 Windows 7"
+   - Download the version matching your system (x86 for 32-bit, x64 for 64-bit).
+   - Install and Restart.
+
+3. Ensure other dependencies are met:
+   - Service Pack 1 (SP1)
+   - KB3020369 (Servicing Stack)
+   - KB2999226 (Universal C Runtime)
+
+Note:
+-----
+If you cannot run `check_kb.py` because you don't have Python installed on the target machine, simply install KB2533623 directly as it is the specific fix for this error code.
