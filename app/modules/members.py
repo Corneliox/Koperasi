@@ -147,7 +147,8 @@ class MemberManager:
         return dict(row) if row else None
     
     def add_member(self, name: str, rank: str = "", unit: str = "", 
-                   nrp: str = "", phone: str = "", address: str = "") -> dict:
+                   nrp: str = "", phone: str = "", address: str = "",
+                   membership_status: str = "Anggota Koperasi") -> dict:
         """Add new member"""
         conn = get_connection()
         cursor = conn.cursor()
@@ -160,9 +161,9 @@ class MemberManager:
                 return {"success": False, "message": "NRP sudah terdaftar"}
         
         cursor.execute(
-            """INSERT INTO members (name, rank, unit, nrp, phone, address)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (name, rank, unit, nrp, phone, address)
+            """INSERT INTO members (name, rank, unit, nrp, phone, address, membership_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, rank, unit, nrp, phone, address, membership_status)
         )
         member_id = cursor.lastrowid
         conn.commit()
@@ -171,14 +172,15 @@ class MemberManager:
         log_audit(
             self.current_user, "MEMBER", "CREATE",
             "member", member_id, None,
-            {"name": name, "nrp": nrp, "rank": rank, "unit": unit},
-            f"Menambah anggota: {name} (NRP: {nrp})", "INFO"
+            {"name": name, "nrp": nrp, "rank": rank, "unit": unit, "status": membership_status},
+            f"Menambah anggota: {name} (NRP: {nrp}) - {membership_status}", "INFO"
         )
         
         return {"success": True, "message": "Anggota berhasil ditambah", "id": member_id}
     
     def update_member(self, member_id: int, name: str, rank: str, unit: str,
-                      nrp: str, phone: str, address: str) -> dict:
+                      nrp: str, phone: str, address: str, 
+                      membership_status: str = "Anggota Koperasi") -> dict:
         """Update member data"""
         conn = get_connection()
         cursor = conn.cursor()
@@ -195,9 +197,9 @@ class MemberManager:
         
         cursor.execute(
             """UPDATE members 
-               SET name=?, rank=?, unit=?, nrp=?, phone=?, address=?
+               SET name=?, rank=?, unit=?, nrp=?, phone=?, address=?, membership_status=?
                WHERE id=?""",
-            (name, rank, unit, nrp, phone, address, member_id)
+            (name, rank, unit, nrp, phone, address, membership_status, member_id)
         )
         conn.commit()
         conn.close()
@@ -205,7 +207,7 @@ class MemberManager:
         log_audit(
             self.current_user, "MEMBER", "UPDATE",
             "member", member_id, None, None,
-            f"Edit anggota ID {member_id}: {name}", "INFO"
+            f"Edit anggota ID {member_id}: {name} ({membership_status})", "INFO"
         )
         
         return {"success": True, "message": "Data anggota berhasil diupdate"}

@@ -224,13 +224,13 @@ class MembersFrame(ctk.CTkFrame):
         if member_id:
             result = self.member_manager.update_member(
                 member_id, data['name'], data['rank'], data['unit'],
-                data['nrp'], data['phone'], data['address']
+                data['nrp'], data['phone'], data['address'], data['membership_status']
             )
             self.close_window(f"edit_member_{member_id}")
         else:
             result = self.member_manager.add_member(
                 data['name'], data['rank'], data['unit'],
-                data['nrp'], data['phone'], data['address']
+                data['nrp'], data['phone'], data['address'], data['membership_status']
             )
             self.close_window("add_member")
         
@@ -253,6 +253,7 @@ class MemberDialog(ctk.CTkToplevel):
     """
     Dialog for adding/editing members
     REFACTORED: Added fuzzy search duplicate detection for new members
+    WIN7 FIXED: Added transient, lifted focus, and forced geometry
     """
     
     def __init__(self, parent, title: str, on_save, member: dict = None, member_manager=None):
@@ -265,15 +266,24 @@ class MemberDialog(ctk.CTkToplevel):
         self.title(title)
         self.configure(fg_color="#1a1a2e")
         self.resizable(True, True)
-        self.minsize(450, 550)
+        self.minsize(450, 600)
+        
+        # Win7 Compatibility: Set transient and lift
+        self.transient(parent)
+        self.lift()
         
         self.update_idletasks()
         
         window_width = 480
-        window_height = 620
+        window_height = 680
         x = (self.winfo_screenwidth() - window_width) // 2
         y = (self.winfo_screenheight() - window_height) // 2
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        # Win7 Compatibility: Re-apply geometry to ensure it shows
+        import sys
+        if sys.platform == 'win32' and sys.getwindowsversion().major == 6:
+            self.after(200, lambda: self.geometry(f"{window_width}x{window_height}+{x}+{y}"))
         
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -290,6 +300,7 @@ class MemberDialog(ctk.CTkToplevel):
         self.bind_auto_save()
         
         self.grab_set()
+        self.focus_force()
     
     def bind_auto_save(self):
         """Bind input fields to auto-save on focus out"""
@@ -312,14 +323,16 @@ class MemberDialog(ctk.CTkToplevel):
             'unit': self.unit_entry.get().strip(),
             'nrp': self.nrp_entry.get().strip(),
             'phone': self.phone_entry.get().strip(),
-            'address': self.address_text.get("1.0", "end-1c").strip()
+            'address': self.address_text.get("1.0", "end-1c").strip(),
+            'membership_status': self.membership_status_var.get()
         }
         
         # If new member and we have a name, create it
         if not self.member:
             result = self.member_manager.add_member(
                 data['name'], data['rank'], data['unit'],
-                data['nrp'], data['phone'], data['address']
+                data['nrp'], data['phone'], data['address'],
+                data['membership_status']
             )
             if result['success']:
                 # Now it's an existing member for subsequent auto-saves
@@ -329,7 +342,8 @@ class MemberDialog(ctk.CTkToplevel):
             # Update existing
             self.member_manager.update_member(
                 self.member['id'], data['name'], data['rank'], data['unit'],
-                data['nrp'], data['phone'], data['address']
+                data['nrp'], data['phone'], data['address'],
+                data['membership_status']
             )
 
     def create_form(self):
@@ -342,8 +356,27 @@ class MemberDialog(ctk.CTkToplevel):
         
         # Bind name entry for duplicate check (only for new members)
         if not self.member:
-            self.name_entry.bind("<FocusOut>", self.check_duplicate_name)
+            self.name_entry.bind("<FocusOut>", self.check_duplicate_name, add="+")
         
+        # Status Keanggotaan (NEW)
+        ctk.CTkLabel(self.scroll_frame, text="Status Keanggotaan Koperasi", text_color="#cccccc"
+                     ).pack(anchor="w", padx=20, pady=(15, 5))
+        self.membership_status_var = ctk.StringVar(value="Anggota Koperasi")
+        status_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
+        status_frame.pack(padx=20, anchor="w")
+        
+        self.radio_anggota = ctk.CTkRadioButton(
+            status_frame, text="Anggota Koperasi", variable=self.membership_status_var, 
+            value="Anggota Koperasi", command=self.auto_save
+        )
+        self.radio_anggota.pack(side="left", padx=(0, 20))
+        
+        self.radio_umum = ctk.CTkRadioButton(
+            status_frame, text="Umum", variable=self.membership_status_var, 
+            value="Umum", command=self.auto_save
+        )
+        self.radio_umum.pack(side="left")
+
         # Duplicate warning frame (hidden by default)
         self.warning_frame = ctk.CTkFrame(self.scroll_frame, fg_color="#7f1d1d", corner_radius=8)
         self.warning_label = ctk.CTkLabel(
@@ -459,6 +492,8 @@ class MemberDialog(ctk.CTkToplevel):
     def populate_form(self):
         """Populate with existing data"""
         self.name_entry.insert(0, self.member['name'])
+        if self.member.get('membership_status'):
+            self.membership_status_var.set(self.member['membership_status'])
         if self.member.get('rank'):
             self.rank_entry.insert(0, self.member['rank'])
         if self.member.get('unit'):
@@ -498,7 +533,9 @@ class MemberDialog(ctk.CTkToplevel):
             'unit': self.unit_entry.get().strip(),
             'nrp': self.nrp_entry.get().strip(),
             'phone': self.phone_entry.get().strip(),
-            'address': self.address_text.get("1.0", "end-1c").strip()
+            'address': self.address_text.get("1.0", "end-1c").strip(),
+            'membership_status': self.membership_status_var.get()
         }
         
         self.on_save(data, self.member['id'] if self.member else None)
+

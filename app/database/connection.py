@@ -144,6 +144,10 @@ def init_database():
     
     # Add columns if they don't exist (for existing databases)
     try:
+        cursor.execute("ALTER TABLE members ADD COLUMN membership_status TEXT DEFAULT 'Anggota Koperasi'")
+    except:
+        pass
+    try:
         cursor.execute("ALTER TABLE loans ADD COLUMN principal REAL DEFAULT 0")
     except:
         pass
