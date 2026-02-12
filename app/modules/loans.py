@@ -211,6 +211,32 @@ class LoanManager:
             "monthly_payment": monthly_payment
         }
     
+    def update_loan(self, loan_id: int, amount: float, interest_rate: float, 
+                    duration_months: int, notes: str = "") -> dict:
+        """Update existing loan with new calculations"""
+        sim = self.simulate_loan(amount, interest_rate, duration_months)
+        if not sim['success']:
+            return sim
+            
+        total_amount = sim['total_amount']
+        monthly_payment = sim['monthly_payment']
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """UPDATE loans 
+               SET principal=?, interest_rate=?, duration_months=?, 
+                   total_amount=?, monthly_payment=?, notes=?
+               WHERE id=?""",
+            (amount, interest_rate, duration_months,
+             total_amount, monthly_payment, notes, loan_id)
+        )
+        conn.commit()
+        conn.close()
+        
+        return {"success": True, "message": "Pinjaman berhasil diupdate"}
+    
     def record_payment(self, loan_id: int, amount: float, payment_method: str = "Tunai", 
                        notes: str = "") -> dict:
         """Record a payment for a loan with payment method"""

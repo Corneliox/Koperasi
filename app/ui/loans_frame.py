@@ -576,8 +576,51 @@ class NewLoanDialog(ctk.CTkToplevel):
         
         self.create_form()
         self.load_members()
+        
+        # Bind for auto-save
+        self.bind_auto_save()
+        
         self.grab_set()
     
+    def bind_auto_save(self):
+        """Bind fields for auto-save"""
+        self.member_menu.bind("<FocusOut>", lambda e: self.auto_save())
+        self.amount_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.interest_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.duration_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.notes_text.bind("<FocusOut>", lambda e: self.auto_save())
+
+    def auto_save(self):
+        """Silently save loan data"""
+        member_display = self.member_var.get()
+        if member_display == "-- Pilih Anggota --":
+            return
+            
+        member_id = self.member_map.get(member_display)
+        if not member_id:
+            return
+            
+        try:
+            amount_str = ''.join(filter(str.isdigit, self.amount_entry.get()))
+            amount = float(amount_str) if amount_str else 0
+            if amount <= 0: return
+            
+            interest = float(self.interest_entry.get() or 0)
+            duration = int(self.duration_entry.get() or 1)
+        except ValueError:
+            return
+            
+        notes = self.notes_text.get("1.0", "end-1c").strip()
+        
+        # We need a way to track if this loan was already auto-created
+        if not hasattr(self, 'created_loan_id'):
+            result = self.loan_manager.create_loan(member_id, amount, interest, duration, notes)
+            if result['success']:
+                self.created_loan_id = result.get('loan_id')
+        else:
+            # Update existing loan
+            self.loan_manager.update_loan(self.created_loan_id, amount, interest, duration, notes)
+
     def create_form(self):
         """Create loan form"""
         ctk.CTkLabel(

@@ -786,9 +786,67 @@ class ItemDialog(ctk.CTkToplevel):
         if item:
             self.populate_form()
         
+        # Bind events for auto-save
+        self.bind_auto_save()
+        
         self.grab_set()
         self.focus_force()
     
+    def bind_auto_save(self):
+        """Bind input fields to auto-save on focus out"""
+        self.name_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.stock_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.buy_price_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.sell_price_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.status_menu.bind("<FocusOut>", lambda e: self.auto_save())
+        self.desc_entry.bind("<FocusOut>", lambda e: self.auto_save())
+
+    def auto_save(self):
+        """Silently save data as user moves between fields"""
+        name = self.name_entry.get().strip()
+        if not name or len(name) < 2:
+            return
+            
+        try:
+            stock = int(self.stock_entry.get() or 0)
+            buy_price = float(self.buy_price_entry.get() or 0)
+            sell_price = float(self.sell_price_entry.get() or 0)
+        except ValueError:
+            return # Ignore invalid numeric input for auto-save
+            
+        item_data = {
+            'name': name,
+            'stock': stock,
+            'buy_price': buy_price,
+            'sell_price': sell_price,
+            'status': self.status_var.get(),
+            'description': self.desc_entry.get("1.0", "end-1c").strip()
+        }
+        
+        # Access warehouse manager from parent
+        warehouse = self.master.master.warehouse # ItemDialog -> ScrollFrame -> StoreFrame
+        
+        if not self.item:
+            result = warehouse.add_item(
+                item_data['name'], item_data['stock'],
+                item_data['buy_price'], item_data['sell_price'],
+                item_data['status'], item_data['description']
+            )
+            if result['success']:
+                # Update local item object for subsequent saves
+                # We need to get the newly created item
+                all_items = warehouse.get_all_items(name)
+                for it in all_items:
+                    if it['name'] == name:
+                        self.item = it
+                        break
+        else:
+            warehouse.update_item(
+                self.item['id'], item_data['name'], item_data['stock'],
+                item_data['buy_price'], item_data['sell_price'],
+                item_data['status'], item_data['description']
+            )
+
     def create_form(self):
         """Create form fields inside scrollable frame"""
         # Name

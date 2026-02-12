@@ -286,8 +286,52 @@ class MemberDialog(ctk.CTkToplevel):
         if member:
             self.populate_form()
         
+        # Bind events for auto-save
+        self.bind_auto_save()
+        
         self.grab_set()
     
+    def bind_auto_save(self):
+        """Bind input fields to auto-save on focus out"""
+        self.name_entry.bind("<FocusOut>", lambda e: self.auto_save(), add="+")
+        self.rank_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.unit_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.nrp_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.phone_entry.bind("<FocusOut>", lambda e: self.auto_save())
+        self.address_text.bind("<FocusOut>", lambda e: self.auto_save())
+
+    def auto_save(self):
+        """Silently save data as user moves between fields"""
+        name = self.name_entry.get().strip()
+        if not name or len(name) < 2: # Don't auto-save empty/short names
+            return
+            
+        data = {
+            'name': name,
+            'rank': self.rank_entry.get().strip(),
+            'unit': self.unit_entry.get().strip(),
+            'nrp': self.nrp_entry.get().strip(),
+            'phone': self.phone_entry.get().strip(),
+            'address': self.address_text.get("1.0", "end-1c").strip()
+        }
+        
+        # If new member and we have a name, create it
+        if not self.member:
+            result = self.member_manager.add_member(
+                data['name'], data['rank'], data['unit'],
+                data['nrp'], data['phone'], data['address']
+            )
+            if result['success']:
+                # Now it's an existing member for subsequent auto-saves
+                self.member = self.member_manager.get_member_by_id(result['id'])
+                self.duplicate_confirmed = True # Since it's created
+        else:
+            # Update existing
+            self.member_manager.update_member(
+                self.member['id'], data['name'], data['rank'], data['unit'],
+                data['nrp'], data['phone'], data['address']
+            )
+
     def create_form(self):
         """Create form fields with duplicate warning area"""
         # Name

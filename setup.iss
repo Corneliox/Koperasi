@@ -48,6 +48,35 @@ var
   RecheckButton: TNewButton;
   IsSystemReady: Boolean;
 
+// Uninstaller globals
+var
+  KeepData: Boolean;
+
+function InitializeUninstall(): Boolean;
+begin
+  KeepData := MsgBox('Apakah Anda ingin tetap menyimpan database dan data transaksi?' + #13#10 + 
+                     '(Disarankan jika Anda berencana untuk mengupdate atau menginstall ulang)', 
+                     mbConfirmation, MB_YESNO) = IDYES;
+  Result := True;
+end;
+
+procedure CurUninstallStepChanged(UninstallStep: TUninstallStep);
+var
+  DataDir: String;
+begin
+  if (UninstallStep = usPostUninstall) and (not KeepData) then
+  begin
+    DataDir := ExpandConstant('{userappdata}\KoperasiBrimob');
+    if DirExists(DataDir) then
+    begin
+      if DelTree(DataDir, True, True, True) then
+        Log('Data directory deleted: ' + DataDir)
+      else
+        Log('Failed to delete data directory: ' + DataDir);
+    end;
+  end;
+end;
+
 // Check if a specific KB is installed via PowerShell
 function CheckKB(KBID: String): Boolean;
 var

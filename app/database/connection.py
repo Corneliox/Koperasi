@@ -4,9 +4,25 @@ Complete SQLite3 implementation with all required tables
 """
 import sqlite3
 import os
+import sys
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "koperasi_brimob.db")
+def get_db_path():
+    """Get persistent database path in AppData"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        app_data = os.environ.get('APPDATA', os.path.expanduser('~\\AppData\\Roaming'))
+        db_dir = os.path.join(app_data, "KoperasiBrimob")
+    else:
+        # Running in development
+        db_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+        
+    return os.path.join(db_dir, "koperasi_brimob.db")
+
+DB_PATH = get_db_path()
 
 
 def get_connection():
@@ -18,7 +34,21 @@ def get_connection():
 
 
 def init_database():
-    """Initialize all database tables"""
+    """Initialize all database tables and migrate old database if necessary"""
+    # Migration: check if old DB exists in root directory and move it to new location
+    old_db = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "koperasi_brimob.db")
+    if os.path.exists(old_db) and old_db != DB_PATH:
+        try:
+            import shutil
+            # If new DB doesn't exist, move old one
+            if not os.path.exists(DB_PATH):
+                shutil.copy2(old_db, DB_PATH)
+                # Keep old as backup or rename? Rename to be safe.
+                os.rename(old_db, old_db + ".bak")
+                print(f"Migrated database from {old_db} to {DB_PATH}")
+        except Exception as e:
+            print(f"Migration failed: {e}")
+
     conn = get_connection()
     cursor = conn.cursor()
     
