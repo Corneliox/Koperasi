@@ -1,8 +1,8 @@
 using System;
-using System.IO;
-using System.Reflection;
 using System.Windows.Forms;
-using KoperasiBrimob.Forms;
+using KoperasiBrimob.Infrastructure;
+using KoperasiBrimob.Data;
+using KoperasiBrimob.Views; // For LoginForm
 
 namespace KoperasiBrimob
 {
@@ -11,25 +11,25 @@ namespace KoperasiBrimob
         [STAThread]
         static void Main()
         {
-            // Prepare for embedded resource loading (Basic setup)
-            // In a real build, we would embed System.Data.SQLite.dll and SQLite.Interop.dll
-            // and write them to a temp folder if not found.
-            
+            // 1. Enable DPI Awareness for sharp text on Win7
+            DpiAwareness.Enable();
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             
-            // Ensure Database is Initialized
+            // 2. Init DB
             try 
             {
-                Helpers.DatabaseHelper.InitializeDatabase();
+                DatabaseHelper.InitializeDatabase();
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Database Initialization Failed: " + ex.Message, "Critical Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Database Init Failed: " + ex.Message);
                 return;
             }
 
-            Application.Run(new LoginForm());
+            // 3. Launch Login (which will launch Main)
+            Application.Run(new Views.LoginForm());
         }
     }
 }

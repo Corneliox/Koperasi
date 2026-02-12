@@ -1,7 +1,8 @@
 using System;
 using System.Data.SQLite;
+using KoperasiBrimob.Data;
 
-namespace KoperasiBrimob.Helpers
+namespace KoperasiBrimob.Infrastructure
 {
     public static class Logger
     {
@@ -26,7 +27,7 @@ namespace KoperasiBrimob.Helpers
             }
             catch (Exception)
             {
-                // Fail silently for logs to avoid crashing app
+                // Fail silently
             }
         }
     }

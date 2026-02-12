@@ -1,6 +1,7 @@
 using System;
 using System.Data.SQLite;
-using KoperasiBrimob.Helpers;
+using KoperasiBrimob.Data;
+using KoperasiBrimob.Infrastructure;
 
 namespace KoperasiBrimob.Services
 {
@@ -15,7 +16,7 @@ namespace KoperasiBrimob.Services
                 {
                     cmd.CommandText = "SELECT COUNT(*) FROM users WHERE username = @u AND password = @p";
                     cmd.Parameters.AddWithValue("@u", username);
-                    cmd.Parameters.AddWithValue("@p", password); // Plaintext as per legacy code
+                    cmd.Parameters.AddWithValue("@p", password);
                     long count = (long)cmd.ExecuteScalar();
                     if (count > 0)
                     {
