@@ -19,8 +19,9 @@ class WarehouseManager:
         self.category_context = category_context
         self.current_user = current_user
     
-    def get_all_items(self, search_term: str = None, limit: int = None, offset: int = 0) -> list:
-        """Get all items filtered by category context with pagination"""
+    def get_all_items(self, search_term: str = None, limit: int = None, offset: int = 0,
+                      sort_column: str = "name", sort_order: str = "ASC") -> list:
+        """Get all items filtered by category context with pagination and sorting"""
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -31,7 +32,15 @@ class WarehouseManager:
             query += " AND name LIKE ?"
             params.append(f"%{search_term}%")
             
-        query += " ORDER BY name"
+        # Validation for sort_column to prevent SQL injection
+        allowed_columns = ["id", "item_code", "name", "stock", "buy_price", "sell_price", "status", "is_active"]
+        if sort_column not in allowed_columns:
+            sort_column = "name"
+        
+        if sort_order.upper() not in ["ASC", "DESC"]:
+            sort_order = "ASC"
+            
+        query += f" ORDER BY {sort_column} {sort_order}"
         
         if limit is not None:
             query += " LIMIT ? OFFSET ?"
@@ -73,7 +82,8 @@ class WarehouseManager:
         return dict(row) if row else None
     
     def add_item(self, name: str, stock: int, buy_price: float, sell_price: float,
-                 status: str = "Koperasi", description: str = "") -> int:
+                 status: str = "Koperasi", description: str = "", 
+                 item_code: str = "", is_active: int = 1) -> int:
         """
         Add new item to warehouse
         Auto-creates 'IN' mutation record
@@ -84,9 +94,9 @@ class WarehouseManager:
         # Insert item
         cursor.execute(
             """INSERT INTO warehouse 
-               (name, category_type, stock, buy_price, sell_price, status, description)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (name, self.category_context, stock, buy_price, sell_price, status, description)
+               (item_code, name, category_type, stock, buy_price, sell_price, status, is_active, description)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (item_code, name, self.category_context, stock, buy_price, sell_price, status, is_active, description)
         )
         item_id = cursor.lastrowid
         
@@ -105,14 +115,15 @@ class WarehouseManager:
         log_audit(
             self.current_user, "INVENTORY", "CREATE",
             "warehouse", item_id, None, 
-            {"name": name, "stock": stock, "category": self.category_context},
-            f"Menambah barang: {name}, Stok: {stock}", "INFO"
+            {"name": name, "stock": stock, "category": self.category_context, "code": item_code},
+            f"Menambah barang: {name} ({item_code}), Stok: {stock}", "INFO"
         )
         
         return item_id
     
     def update_item(self, item_id: int, name: str, stock: int, buy_price: float,
-                    sell_price: float, status: str, description: str) -> bool:
+                    sell_price: float, status: str, description: str,
+                    item_code: str = "", is_active: int = 1) -> bool:
         """
         Update item and create mutation if stock changed
         """
@@ -130,10 +141,10 @@ class WarehouseManager:
         # Update item
         cursor.execute(
             """UPDATE warehouse 
-               SET name=?, stock=?, buy_price=?, sell_price=?, status=?, 
-                   description=?, updated_at=CURRENT_TIMESTAMP
+               SET item_code=?, name=?, stock=?, buy_price=?, sell_price=?, status=?, 
+                   is_active=?, description=?, updated_at=CURRENT_TIMESTAMP
                WHERE id=? AND category_type=?""",
-            (name, stock, buy_price, sell_price, status, description, 
+            (item_code, name, stock, buy_price, sell_price, status, is_active, description, 
              item_id, self.category_context)
         )
         
@@ -154,8 +165,8 @@ class WarehouseManager:
         log_audit(
             self.current_user, "INVENTORY", "UPDATE",
             "warehouse", item_id, old_item, 
-            {"name": name, "stock": stock},
-            f"Edit barang ID {item_id}: {name}, Stok: {old_stock} -> {stock}", "INFO"
+            {"name": name, "stock": stock, "is_active": is_active},
+            f"Edit barang ID {item_id}: {name}, Stok: {old_stock} -> {stock}, Aktif: {is_active}", "INFO"
         )
         
         return True
@@ -191,6 +202,9 @@ class WarehouseManager:
         item = self.get_item_by_id(item_id)
         if not item:
             return {"success": False, "message": "Barang tidak ditemukan"}
+        
+        if not item.get('is_active', 1):
+            return {"success": False, "message": "Barang ini sudah tidak aktif dan tidak bisa dijual."}
         
         if item['stock'] < qty:
             return {"success": False, "message": f"Stok tidak cukup. Tersedia: {item['stock']}"}

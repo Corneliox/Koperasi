@@ -299,6 +299,9 @@ class MemberDialog(ctk.CTkToplevel):
         # Bind events for auto-save
         self.bind_auto_save()
         
+        # Bind close event
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         self.grab_set()
         self.focus_force()
     
@@ -345,6 +348,20 @@ class MemberDialog(ctk.CTkToplevel):
                 data['nrp'], data['phone'], data['address'],
                 data['membership_status']
             )
+
+    def on_closing(self):
+        """Ask to save before closing"""
+        # Simple check for empty name to avoid unnecessary prompts on empty dialogs
+        if not self.name_entry.get().strip():
+            self.destroy()
+            return
+
+        response = messagebox.askyesnocancel("Simpan Perubahan", "Apakah Anda ingin menyimpan perubahan sebelum keluar?")
+        if response is True: # Yes
+            self.save()
+        elif response is False: # No
+            self.destroy()
+        # If None (Cancel), do nothing
 
     def create_form(self):
         """Create form fields with duplicate warning area"""

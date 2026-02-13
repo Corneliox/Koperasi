@@ -14,7 +14,9 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
-DisableProgramGroupPage=yes
+DisableDirPage=no
+DisableProgramGroupPage=no
+UsePreviousAppDir=no
 PrivilegesRequired=admin
 OutputDir=.
 OutputBaseFilename=KoperasiBrimob_Setup_v{#MyAppVersion}
@@ -54,10 +56,24 @@ var
 
 function InitializeUninstall(): Boolean;
 begin
-  KeepData := MsgBox('Apakah Anda ingin tetap menyimpan database dan data transaksi?' + #13#10 + 
-                     '(Disarankan jika Anda berencana untuk mengupdate atau menginstall ulang)', 
-                     mbConfirmation, MB_YESNO) = IDYES;
-  Result := True;
+  // Dialog konfirmasi penghapusan data
+  case MsgBox('Apakah Anda ingin menghapus DATABASE dan DATA TRANSAKSI juga?' + #13#10#13#10 + 
+              'Pilih NO jika Anda hanya ingin menginstal ulang aplikasi tanpa kehilangan data.' + #13#10 +
+              'Pilih YES jika Anda ingin membersihkan seluruh data dari komputer ini.', 
+              mbConfirmation, MB_YESNOCANCEL) of
+    IDYES: 
+      begin
+        KeepData := False;
+        Result := True;
+      end;
+    IDNO: 
+      begin
+        KeepData := True;
+        Result := True;
+      end;
+    IDCANCEL:
+      Result := False;
+  end;
 end;
 
 procedure CurUninstallStepChanged(UninstallStep: TUninstallStep);

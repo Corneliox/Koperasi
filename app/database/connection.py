@@ -67,17 +67,29 @@ def init_database():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS warehouse (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_code TEXT,
             name TEXT NOT NULL,
             category_type TEXT NOT NULL CHECK(category_type IN ('SEMBAKO', 'TAKTIKAL')),
             stock INTEGER DEFAULT 0,
             buy_price REAL DEFAULT 0,
             sell_price REAL DEFAULT 0,
             status TEXT DEFAULT 'Koperasi' CHECK(status IN ('Koperasi', 'Konsinyasi')),
+            is_active INTEGER DEFAULT 1,
             description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # Add columns if they don't exist
+    try:
+        cursor.execute("ALTER TABLE warehouse ADD COLUMN item_code TEXT")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE warehouse ADD COLUMN is_active INTEGER DEFAULT 1")
+    except:
+        pass
     
     # Warehouse mutation table for tracking all stock changes
     cursor.execute("""

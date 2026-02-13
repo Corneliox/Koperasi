@@ -1,0 +1,42 @@
+1. Keamanan & Persistensi Data (Anti Data-Loss)
+   * Migrasi Database ke AppData: Database (koperasi_brimob.db) dipindahkan dari folder instalasi ke %APPDATA%/KoperasiBrimob/. Hal ini memastikan data
+     TIDAK HILANG saat aplikasi di-update, di-install ulang, atau dihapus file .exe-nya.
+   * Auto-Migration: Sistem secara otomatis mendeteksi jika ada database lama di folder aplikasi dan memindahkannya ke lokasi baru saat aplikasi dijalankan
+     pertama kali.
+   * Global Save All & Exit: Implementasi dialog konfirmasi baru saat menutup aplikasi atau logout. Terdapat tombol "💾 Save All & Proceed" yang secara
+     otomatis mendeteksi semua jendela yang masih terbuka (Anggota, Inventaris, Pinjaman) dan menyimpannya sekaligus sebelum keluar.
+
+
+2. Modul Inventaris (Gudang) - Update Besar
+   * Kolom Baru: Penambahan kolom Kodebrg (Item Code) dan Status Aktif (Ya/Tidak).
+   * Fitur Sortir: Header kolom ID, Kodebrg, Status, dan Aktif kini dapat diklik untuk mengurutkan data (A-Z / Z-A).
+   * Logika Deaktivasi: Barang yang ditandai "Tidak Aktif" akan berwarna kemerahan di tabel dan tombol "Jual" akan otomatis terkunci (Disabled).
+   * Kalkulasi Otomatis: Sistem kini menghitung secara real-time:
+       * Laba: (Harga Jual - Harga Pokok).
+       * Harga Aset: (Harga Jual * Stok).
+   * Perbaikan Dialog Edit: Menampilkan kembali field Status Aktif dan Keterangan yang sempat hilang, serta memperbaiki bug simpan data.
+
+
+3. Modul Anggota & Penjualan
+   * Status Keanggotaan: Penambahan pilihan status "Anggota Koperasi" atau "Umum" pada data anggota.
+   * Smart Redirect di Penjualan: Saat melakukan transaksi, jika nama anggota tidak ditemukan:
+       * Sistem akan memberi peringatan dan menawarkan untuk menambah anggota baru.
+       * Jika setuju, akan diarahkan ke dialog tambah anggota dengan pengecekan duplikasi otomatis.
+       * Setelah simpan, sistem otomatis kembali ke transaksi dengan anggota yang baru dibuat tersebut terpilih.
+
+
+4. Optimalisasi User Experience (UX)
+   * Sistem Autosave Selektif:
+       * Aktif: Pada modul Anggota dan Pinjaman (data tersimpan otomatis saat pindah input).
+       * Manual: Pada modul Inventaris (memerlukan klik tombol "Simpan" sesuai permintaan).
+   * Pencegahan Double-Save: Implementasi sistem Lock (saving_in_progress) dan Debounce untuk mencegah error "Double Log" atau data ganda saat mengedit
+     cepat.
+   * Kompatibilitas Windows 7: Perbaikan posisi jendela pop-up (transient) dan penyesuaian DPI agar tampilan tetap rapi di OS lama.
+
+
+5. Installer & Uninstaller Pro (Inno Setup)
+   * Custom Installation Path: Installer kini memberikan pilihan lokasi instalasi kepada user.
+   * Uninstaller Cerdas: Saat aplikasi dihapus, muncul pilihan:
+       * NO: Hanya hapus aplikasi (Database aman).
+       * YES: Hapus aplikasi sekaligus bersih-bersih seluruh database.
+   * Update-Ready: Struktur installer sudah siap untuk pengiriman update ke klien tanpa mengganggu data transaksi yang sudah berjalan.

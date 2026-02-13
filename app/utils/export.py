@@ -98,16 +98,28 @@ def export_transactions_excel(transactions: list, filename: str = "Laporan_Trans
 
 def export_inventory_excel(items: list, filename: str = "Laporan_Inventaris",
                            output_dir: str = None) -> str:
-    """Export inventory to Excel"""
+    """Export inventory to Excel with full headers and calculations"""
+    processed_items = []
+    for item in items:
+        processed = dict(item)
+        processed['laba'] = item['sell_price'] - item['buy_price']
+        processed['status_aktif'] = "Ya" if item.get('is_active', 1) else "Tidak"
+        processed['harga_aset'] = item['sell_price'] * item['stock']
+        processed_items.append(processed)
+
     columns = {
+        'id': 'ID',
+        'item_code': 'Kodebrg',
         'name': 'Nama Barang',
         'stock': 'Stok',
-        'buy_price': 'Harga Beli',
+        'buy_price': 'Harga Pokok',
         'sell_price': 'Harga Jual',
-        'status': 'Status',
-        'description': 'Keterangan'
+        'laba': 'Laba',
+        'status': 'Status Barang',
+        'status_aktif': 'Status Aktif',
+        'harga_aset': 'Harga aset'
     }
-    return export_to_excel(items, columns, filename, "Inventaris", output_dir)
+    return export_to_excel(processed_items, columns, filename, "Inventaris", output_dir)
 
 
 def export_mutations_excel(mutations: list, filename: str = "Laporan_Mutasi",
@@ -220,7 +232,7 @@ def export_transactions_pdf(transactions: list, title: str = "Laporan Transaksi"
 
 def export_inventory_pdf(items: list, category: str, filename: str = "Laporan_Inventaris",
                          output_dir: str = None) -> str:
-    """Export inventory to PDF"""
+    """Export inventory to PDF with new columns"""
     if output_dir is None:
         output_dir = os.path.join(os.path.expanduser("~"), "Documents", "Koperasi_Export")
     
@@ -230,26 +242,34 @@ def export_inventory_pdf(items: list, category: str, filename: str = "Laporan_In
     pdf.alias_nb_pages()
     pdf.add_page()
     
-    headers = ['Nama Barang', 'Stok', 'Harga Beli', 'Harga Jual', 'Status']
-    col_widths = [60, 20, 35, 35, 40]
+    # Headers matching the request
+    headers = ['ID', 'Kode', 'Nama Barang', 'Stok', 'Pokok', 'Jual', 'Laba', 'Aset']
+    col_widths = [10, 20, 45, 15, 25, 25, 25, 25] # Total should be ~190 for A4
     
     data = []
+    total_asset_value = 0
     for item in items:
+        laba = item['sell_price'] - item['buy_price']
+        aset = item['sell_price'] * item['stock']
+        total_asset_value += aset
+        
         data.append([
-            str(item.get('name', ''))[:30],
+            str(item.get('id', '')),
+            str(item.get('item_code', '-'))[:10],
+            str(item.get('name', ''))[:20],
             str(item.get('stock', '')),
-            f"Rp {item.get('buy_price', 0):,.0f}",
-            f"Rp {item.get('sell_price', 0):,.0f}",
-            str(item.get('status', ''))
+            f"{item.get('buy_price', 0):,.0f}",
+            f"{item.get('sell_price', 0):,.0f}",
+            f"{laba:,.0f}",
+            f"{aset:,.0f}"
         ])
     
     pdf.add_table(headers, data, col_widths)
     
     # Summary
-    total_value = sum(item.get('stock', 0) * item.get('buy_price', 0) for item in items)
     pdf.ln(10)
     pdf.set_font('Helvetica', 'B', 11)
-    pdf.cell(0, 10, f"Total Nilai Inventaris: Rp {total_value:,.0f}", align='R')
+    pdf.cell(0, 10, f"Total Nilai Aset (Harga Jual): Rp {total_asset_value:,.0f}", align='R')
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     full_filename = f"{filename}_{timestamp}.pdf"

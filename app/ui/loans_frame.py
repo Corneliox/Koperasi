@@ -580,6 +580,9 @@ class NewLoanDialog(ctk.CTkToplevel):
         # Bind for auto-save
         self.bind_auto_save()
         
+        # Bind close event
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         self.grab_set()
     
     def bind_auto_save(self):
@@ -620,6 +623,19 @@ class NewLoanDialog(ctk.CTkToplevel):
         else:
             # Update existing loan
             self.loan_manager.update_loan(self.created_loan_id, amount, interest, duration, notes)
+
+    def on_closing(self):
+        """Ask to save before closing"""
+        member_display = self.member_var.get()
+        if member_display == "-- Pilih Anggota --":
+            self.destroy()
+            return
+
+        response = messagebox.askyesnocancel("Simpan Perubahan", "Apakah Anda ingin menyimpan pinjaman ini sebelum keluar?")
+        if response is True: # Yes
+            self.save()
+        elif response is False: # No
+            self.destroy()
 
     def create_form(self):
         """Create loan form"""

@@ -118,7 +118,88 @@ class KoperasiBrimobApp(ctk.CTk):
         
         # Start with login
         self.show_login()
-    
+        
+        # Bind main window close event
+        self.protocol("WM_DELETE_WINDOW", self.on_app_closing)
+
+    def on_app_closing(self):
+        """Show custom confirmation before closing the entire application"""
+        self.handle_exit_logic(is_logout=False)
+
+    def handle_exit_logic(self, is_logout=False):
+        """Unified logic for exit and logout with Save All option"""
+        dialog = CustomExitDialog(self, is_logout=is_logout)
+        self.wait_window(dialog)
+        
+        if dialog.result == "save_proceed":
+            if self.save_all_dialogs():
+                tkinter.messagebox.showinfo("Sukses", "Semua data telah berhasil disimpan.")
+                if is_logout:
+                    self.perform_logout()
+                else:
+                    self.destroy()
+                    sys.exit(0)
+        elif dialog.result == "proceed_only":
+            if is_logout:
+                self.perform_logout()
+            else:
+                self.destroy()
+                sys.exit(0)
+        # If 'cancel' or None, do nothing
+
+    def save_all_dialogs(self) -> bool:
+        """Find all active dialogs and trigger their save methods. Returns True if all saved."""
+        all_saved = True
+        
+        def find_dialogs(parent):
+            dialogs = []
+            for child in parent.winfo_children():
+                if isinstance(child, ctk.CTkToplevel):
+                    dialogs.append(child)
+                # Recurse into frames
+                if hasattr(child, 'winfo_children'):
+                    dialogs.extend(find_dialogs(child))
+            return dialogs
+
+        active_dialogs = find_dialogs(self)
+        
+        # Filter duplicates (sometimes winfo_children returns toplevels multiple times)
+        unique_dialogs = []
+        seen_ids = set()
+        for d in active_dialogs:
+            if id(d) not in seen_ids:
+                unique_dialogs.append(d)
+                seen_ids.add(id(d))
+
+        for dialog in unique_dialogs:
+            # Check for various save methods
+            save_method = None
+            for m in ['save', 'sell', 'process_return']:
+                if hasattr(dialog, m) and callable(getattr(dialog, m)):
+                    save_method = getattr(dialog, m)
+                    break
+            
+            if save_method:
+                try:
+                    save_method()
+                    # If dialog still exists, it means validation failed
+                    if dialog.winfo_exists():
+                        all_saved = False
+                except Exception as e:
+                    print(f"Error saving dialog {dialog}: {e}")
+                    all_saved = False
+        
+        return all_saved
+
+    def perform_logout(self):
+        """Actual logout logic"""
+        log_audit(
+            self.current_user, "SYSTEM", "LOGOUT",
+            None, None, None, None,
+            f"User {self.current_user} logout", "INFO"
+        )
+        self.show_login()
+
     def show_login(self):
         """Show login frame"""
         self.clear_window()
@@ -427,13 +508,8 @@ class KoperasiBrimobApp(ctk.CTk):
         financial.grid(row=0, column=0, sticky="nsew")
     
     def logout(self):
-        """Logout and return to login"""
-        log_audit(
-            self.current_user, "SYSTEM", "LOGOUT",
-            None, None, None, None,
-            f"User {self.current_user} logout", "INFO"
-        )
-        self.show_login()
+        """Logout and return to login with custom confirmation"""
+        self.handle_exit_logic(is_logout=True)
     
     def on_user_icon_click(self, event):
         """Handle single click on user icon - show dropdown menu"""
@@ -515,6 +591,78 @@ class KoperasiBrimobApp(ctk.CTk):
         self.close_dialog("danger_reset")
         # Reload main app to reflect changes
         self.show_main_app()
+
+
+class CustomExitDialog(ctk.CTkToplevel):
+    """Custom confirmation dialog with Save All, Exit Only, and Cancel options"""
+    
+    def __init__(self, parent, is_logout=False):
+        super().__init__(parent)
+        self.result = "cancel"
+        
+        action = "Logout" if is_logout else "Keluar"
+        self.title(f"Konfirmasi {action}")
+        self.configure(fg_color="#1a1a2e")
+        self.resizable(False, False)
+        
+        # Center dialog
+        self.update_idletasks()
+        w, h = 450, 220
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (w // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (h // 2)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+        
+        # UI Elements
+        ctk.CTkLabel(
+            self, text="⚠️ Konfirmasi Pekerjaan",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#f59e0b"
+        ).pack(pady=(20, 10))
+        
+        ctk.CTkLabel(
+            self, 
+            text=f"Apakah Anda ingin menyimpan semua perubahan sebelum {action.lower()}?",
+            font=ctk.CTkFont(size=13),
+            text_color="#ccc",
+            wraplength=400
+        ).pack(pady=10)
+        
+        # Buttons Frame
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=20)
+        
+        # Save & Proceed
+        ctk.CTkButton(
+            btn_frame, text="💾 Save All & Proceed",
+            fg_color="#22c55e", hover_color="#16a34a",
+            text_color="#000", font=ctk.CTkFont(weight="bold"),
+            command=self.on_save_all
+        ).pack(side="left", padx=5)
+        
+        # Proceed Only
+        ctk.CTkButton(
+            btn_frame, text=f"🚪 {action} Tanpa Simpan",
+            fg_color="#ef4444", hover_color="#dc2626",
+            command=self.on_proceed_only
+        ).pack(side="left", padx=5)
+        
+        # Cancel
+        ctk.CTkButton(
+            btn_frame, text="Batal",
+            fg_color="#374151", hover_color="#4b5563",
+            command=self.destroy
+        ).pack(side="left", padx=5)
+        
+        self.grab_set()
+        self.focus_force()
+
+    def on_save_all(self):
+        self.result = "save_proceed"
+        self.destroy()
+
+    def on_proceed_only(self):
+        self.result = "proceed_only"
+        self.destroy()
 
 
 def main():
