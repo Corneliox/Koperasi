@@ -40,7 +40,12 @@ if sys.platform == 'win32':
         pass
 
 import customtkinter as ctk
+from app.utils.error_handler import setup_global_error_handler
 from app.database.connection import init_database
+
+# Initialize global error handling
+setup_global_error_handler()
+
 from app.utils.audit_log import log_audit
 from app.ui.login_frame import LoginFrame
 from app.ui.category_select_frame import CategorySelectFrame, ChangeDivisionDialog
@@ -64,11 +69,19 @@ class KoperasiBrimobApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # Win7 Compatibility: Force Theme
-        # Windows 7 has issues with "system" theme detection
+        # Windows Version Detection
         win_ver = sys.getwindowsversion()
-        if win_ver.major == 6 and win_ver.minor == 1:
-            ctk.set_appearance_mode("Dark") # Force Dark mode on Win7 to avoid bugs
+        is_win7 = win_ver.major == 6 and win_ver.minor == 1
+        
+        # Optimization for Win7 / 32-bit
+        if is_win7:
+            ctk.set_appearance_mode("Dark") # Force Dark mode
+            # Set global font fallback for Windows 7
+            self.default_font = ("Segoe UI", 12)
+            self.title_font = ("Segoe UI", 18, "bold")
+        else:
+            self.default_font = ("Roboto", 12)
+            self.title_font = ("Roboto", 18, "bold")
         
         # Initialize database
         init_database()

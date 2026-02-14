@@ -5,6 +5,7 @@ REFACTORED: Added fuzzy search integration, autocomplete support
 from difflib import SequenceMatcher
 from app.database.connection import get_connection
 from app.utils.audit_log import log_audit
+from app.utils.decorators import handle_db_errors
 
 
 class MemberManager:
@@ -13,6 +14,7 @@ class MemberManager:
     def __init__(self, current_user: str = "admin"):
         self.current_user = current_user
     
+    @handle_db_errors
     def get_all_members(self, search_term: str = None) -> list:
         """Get all members with optional search"""
         conn = get_connection()
@@ -32,6 +34,7 @@ class MemberManager:
         conn.close()
         return members
     
+    @handle_db_errors
     def autocomplete_search(self, partial_name: str, limit: int = 10) -> list:
         """Get autocomplete suggestions for member name"""
         if not partial_name or len(partial_name) < 2:
@@ -79,6 +82,7 @@ class MemberManager:
         conn.close()
         return prefix_matches
     
+    @handle_db_errors
     def find_similar_members(self, search_name: str, threshold: float = 0.8) -> list:
         """Find members with similar names using fuzzy matching"""
         conn = get_connection()
@@ -97,6 +101,7 @@ class MemberManager:
         similar.sort(key=lambda x: x['score'], reverse=True)
         return similar[:5]  # Return top 5 matches
     
+    @handle_db_errors
     def check_duplicate_before_create(self, name: str, nrp: str = None) -> dict:
         """Check for potential duplicates before creating a new member"""
         conn = get_connection()
@@ -137,6 +142,7 @@ class MemberManager:
         
         return result
     
+    @handle_db_errors
     def get_member_by_id(self, member_id: int) -> dict:
         """Get single member by ID"""
         conn = get_connection()
@@ -146,38 +152,44 @@ class MemberManager:
         conn.close()
         return dict(row) if row else None
     
+    @handle_db_errors
     def add_member(self, name: str, rank: str = "", unit: str = "", 
                    nrp: str = "", phone: str = "", address: str = "",
                    membership_status: str = "Anggota Koperasi") -> dict:
         """Add new member"""
+        if not name:
+            return {"success": False, "message": "Nama anggota tidak boleh kosong"}
+
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Check if NRP already exists
-        if nrp:
-            cursor.execute("SELECT id FROM members WHERE nrp = ?", (nrp,))
-            if cursor.fetchone():
-                conn.close()
-                return {"success": False, "message": "NRP sudah terdaftar"}
-        
-        cursor.execute(
-            """INSERT INTO members (name, rank, unit, nrp, phone, address, membership_status)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (name, rank, unit, nrp, phone, address, membership_status)
-        )
-        member_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "MEMBER", "CREATE",
-            "member", member_id, None,
-            {"name": name, "nrp": nrp, "rank": rank, "unit": unit, "status": membership_status},
-            f"Menambah anggota: {name} (NRP: {nrp}) - {membership_status}", "INFO"
-        )
-        
-        return {"success": True, "message": "Anggota berhasil ditambah", "id": member_id}
+        try:
+            cursor = conn.cursor()
+            
+            # Check if NRP already exists
+            if nrp:
+                cursor.execute("SELECT id FROM members WHERE nrp = ?", (nrp,))
+                if cursor.fetchone():
+                    return {"success": False, "message": "NRP sudah terdaftar"}
+            
+            cursor.execute(
+                """INSERT INTO members (name, rank, unit, nrp, phone, address, membership_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (name, rank, unit, nrp, phone, address, membership_status)
+            )
+            member_id = cursor.lastrowid
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "MEMBER", "CREATE",
+                "member", member_id, None,
+                {"name": name, "nrp": nrp, "rank": rank, "unit": unit, "status": membership_status},
+                f"Menambah anggota: {name} (NRP: {nrp}) - {membership_status}", "INFO"
+            )
+            
+            return {"success": True, "message": "Anggota berhasil ditambah", "id": member_id}
+        finally:
+            conn.close()
     
+    @handle_db_errors
     def update_member(self, member_id: int, name: str, rank: str, unit: str,
                       nrp: str, phone: str, address: str, 
                       membership_status: str = "Anggota Koperasi") -> dict:
@@ -212,6 +224,7 @@ class MemberManager:
         
         return {"success": True, "message": "Data anggota berhasil diupdate"}
     
+    @handle_db_errors
     def delete_member(self, member_id: int) -> dict:
         """Delete member"""
         member = self.get_member_by_id(member_id)
@@ -242,6 +255,7 @@ class MemberManager:
         
         return {"success": True, "message": "Anggota berhasil dihapus"}
     
+    @handle_db_errors
     def get_member_transactions(self, member_id: int, category_type: str = None) -> list:
         """Get transaction history for a member"""
         conn = get_connection()
@@ -270,6 +284,7 @@ class MemberManager:
         conn.close()
         return transactions
     
+    @handle_db_errors
     def get_statistics(self) -> dict:
         """Get member statistics"""
         conn = get_connection()

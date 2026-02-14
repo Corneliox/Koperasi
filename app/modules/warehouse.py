@@ -5,6 +5,7 @@ All operations are filtered by category_context (SEMBAKO/TAKTIKAL)
 from datetime import datetime
 from app.database.connection import get_connection
 from app.utils.audit_log import log_audit
+from app.utils.decorators import handle_db_errors
 
 
 class WarehouseManager:
@@ -19,6 +20,7 @@ class WarehouseManager:
         self.category_context = category_context
         self.current_user = current_user
     
+    @handle_db_errors
     def get_all_items(self, search_term: str = None, limit: int = None, offset: int = 0,
                       sort_column: str = "name", sort_order: str = "ASC") -> list:
         """Get all items filtered by category context with pagination and sorting"""
@@ -81,6 +83,7 @@ class WarehouseManager:
         conn.close()
         return dict(row) if row else None
     
+    @handle_db_errors
     def add_item(self, name: str, stock: int, buy_price: float, sell_price: float,
                  status: str = "Koperasi", description: str = "", 
                  item_code: str = "", is_active: int = 1) -> int:
@@ -88,38 +91,51 @@ class WarehouseManager:
         Add new item to warehouse
         Auto-creates 'IN' mutation record
         """
+        # Validation
+        if not name:
+            return None # Or raise a custom exception if preferred
+            
+        try:
+            stock = int(stock) if stock is not None else 0
+            buy_price = float(buy_price) if buy_price is not None else 0.0
+            sell_price = float(sell_price) if sell_price is not None else 0.0
+        except (ValueError, TypeError):
+            return None
+
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Insert item
-        cursor.execute(
-            """INSERT INTO warehouse 
-               (item_code, name, category_type, stock, buy_price, sell_price, status, is_active, description)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (item_code, name, self.category_context, stock, buy_price, sell_price, status, is_active, description)
-        )
-        item_id = cursor.lastrowid
-        
-        # Create initial IN mutation if stock > 0
-        if stock > 0:
+        try:
+            cursor = conn.cursor()
+            
+            # Insert item
             cursor.execute(
-                """INSERT INTO warehouse_mutation (item_id, type, qty, description)
-                   VALUES (?, 'IN', ?, ?)""",
-                (item_id, stock, f"Stok awal: {name}")
+                """INSERT INTO warehouse 
+                   (item_code, name, category_type, stock, buy_price, sell_price, status, is_active, description)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (item_code, name, self.category_context, stock, buy_price, sell_price, status, is_active, description)
             )
-        
-        conn.commit()
-        conn.close()
-        
-        # Log activity
-        log_audit(
-            self.current_user, "INVENTORY", "CREATE",
-            "warehouse", item_id, None, 
-            {"name": name, "stock": stock, "category": self.category_context, "code": item_code},
-            f"Menambah barang: {name} ({item_code}), Stok: {stock}", "INFO"
-        )
-        
-        return item_id
+            item_id = cursor.lastrowid
+            
+            # Create initial IN mutation if stock > 0
+            if stock > 0:
+                cursor.execute(
+                    """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                       VALUES (?, 'IN', ?, ?)""",
+                    (item_id, stock, f"Stok awal: {name}")
+                )
+            
+            conn.commit()
+            
+            # Log activity
+            log_audit(
+                self.current_user, "INVENTORY", "CREATE",
+                "warehouse", item_id, None, 
+                {"name": name, "stock": stock, "category": self.category_context, "code": item_code},
+                f"Menambah barang: {name} ({item_code}), Stok: {stock}", "INFO"
+            )
+            
+            return item_id
+        finally:
+            conn.close()
     
     def update_item(self, item_id: int, name: str, stock: int, buy_price: float,
                     sell_price: float, status: str, description: str,
@@ -194,6 +210,7 @@ class WarehouseManager:
         
         return True
     
+    @handle_db_errors
     def sell_item(self, item_id: int, qty: int, member_id: int = None,
                   payment_method: str = "Tunai") -> dict:
         """

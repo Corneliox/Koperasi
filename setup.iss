@@ -35,6 +35,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "diagnostic_check.bat"; DestDir: "{app}"; Flags: ignoreversion
 
+[Dirs]
+Name: "{app}\logs"; Permissions: everyone-full
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
@@ -90,6 +93,11 @@ begin
       else
         Log('Failed to delete data directory: ' + DataDir);
     end;
+    
+    // Also clean logs in installation directory
+    DataDir := ExpandConstant('{app}\logs');
+    if DirExists(DataDir) then
+      DelTree(DataDir, True, True, True);
   end;
 end;
 

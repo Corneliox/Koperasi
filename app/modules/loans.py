@@ -5,6 +5,7 @@ REFACTORED: Added simulation engine, near-due tracking, phone display
 from datetime import datetime, timedelta
 from app.database.connection import get_connection
 from app.utils.audit_log import log_audit
+from app.utils.decorators import handle_db_errors
 
 
 class LoanManager:
@@ -13,6 +14,7 @@ class LoanManager:
     def __init__(self, current_user: str = "admin"):
         self.current_user = current_user
     
+    @handle_db_errors
     def get_all_loans(self, status_filter: str = None) -> list:
         """Get all loans with optional status filter"""
         conn = get_connection()
@@ -39,6 +41,7 @@ class LoanManager:
         conn.close()
         return loans
     
+    @handle_db_errors
     def get_all_loans_with_phone(self, status_filter: str = None) -> list:
         """Get all loans with member phone numbers"""
         conn = get_connection()
@@ -65,6 +68,7 @@ class LoanManager:
         conn.close()
         return loans
     
+    @handle_db_errors
     def get_near_due_loans(self, days: int = 14) -> list:
         """Get loans near due date within N days"""
         conn = get_connection()
@@ -94,8 +98,16 @@ class LoanManager:
         Simulate loan calculation before creation
         Returns breakdown of payments
         """
+        try:
+            # Ensure numeric values
+            amount = float(amount) if amount is not None else 0
+            interest_rate = float(interest_rate) if interest_rate is not None else 0
+            duration_months = int(duration_months) if duration_months is not None else 0
+        except (ValueError, TypeError):
+            return {"success": False, "message": "Input harus berupa angka"}
+
         if amount <= 0 or duration_months <= 0:
-            return {"success": False, "message": "Invalid input values"}
+            return {"success": False, "message": "Jumlah dan durasi harus lebih dari 0"}
         
         interest_amount = amount * (interest_rate / 100)
         total_amount = amount + interest_amount
@@ -128,6 +140,7 @@ class LoanManager:
             "breakdown": breakdown
         }
     
+    @handle_db_errors
     def get_loan_by_id(self, loan_id: int) -> dict:
         """Get single loan by ID"""
         conn = get_connection()
@@ -143,6 +156,7 @@ class LoanManager:
         conn.close()
         return dict(row) if row else None
     
+    @handle_db_errors
     def get_member_loans(self, member_id: int) -> list:
         """Get all loans for a specific member"""
         conn = get_connection()
@@ -157,6 +171,7 @@ class LoanManager:
         conn.close()
         return loans
     
+    @handle_db_errors
     def create_loan(self, member_id: int, amount: float, interest_rate: float = 0,
                     duration_months: int = 12, notes: str = "") -> dict:
         """Create new loan for a member with full calculation"""
@@ -183,10 +198,10 @@ class LoanManager:
         
         cursor.execute(
             """INSERT INTO loans 
-               (member_id, principal, interest_rate, duration_months, 
+               (member_id, principal, amount, interest_rate, duration_months, 
                 total_amount, monthly_payment, due_date, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (member_id, amount, interest_rate, duration_months,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (member_id, amount, amount, interest_rate, duration_months,
              total_amount, monthly_payment, due_date, notes)
         )
         loan_id = cursor.lastrowid
@@ -211,6 +226,7 @@ class LoanManager:
             "monthly_payment": monthly_payment
         }
     
+    @handle_db_errors
     def update_loan(self, loan_id: int, amount: float, interest_rate: float, 
                     duration_months: int, notes: str = "") -> dict:
         """Update existing loan with new calculations"""
@@ -226,10 +242,10 @@ class LoanManager:
         
         cursor.execute(
             """UPDATE loans 
-               SET principal=?, interest_rate=?, duration_months=?, 
+               SET principal=?, amount=?, interest_rate=?, duration_months=?, 
                    total_amount=?, monthly_payment=?, notes=?
                WHERE id=?""",
-            (amount, interest_rate, duration_months,
+            (amount, amount, interest_rate, duration_months,
              total_amount, monthly_payment, notes, loan_id)
         )
         conn.commit()
@@ -237,6 +253,7 @@ class LoanManager:
         
         return {"success": True, "message": "Pinjaman berhasil diupdate"}
     
+    @handle_db_errors
     def record_payment(self, loan_id: int, amount: float, payment_method: str = "Tunai", 
                        notes: str = "") -> dict:
         """Record a payment for a loan with payment method"""
@@ -295,6 +312,7 @@ class LoanManager:
         """Record a payment for a loan (backward compatibility)"""
         return self.record_payment(loan_id, amount, "Tunai", description)
     
+    @handle_db_errors
     def get_loan_payments(self, loan_id: int) -> list:
         """Get payment history for a loan"""
         conn = get_connection()
@@ -309,6 +327,7 @@ class LoanManager:
         conn.close()
         return payments
     
+    @handle_db_errors
     def mark_as_bad_debt(self, loan_id: int) -> dict:
         """Mark loan as bad debt (Macet)"""
         loan = self.get_loan_by_id(loan_id)
@@ -333,6 +352,7 @@ class LoanManager:
         
         return {"success": True, "message": "Pinjaman ditandai sebagai macet"}
     
+    @handle_db_errors
     def get_statistics(self) -> dict:
         """Get loan statistics"""
         conn = get_connection()

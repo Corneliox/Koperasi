@@ -166,7 +166,13 @@ class DashboardFrame(ctk.CTkFrame):
     def create_stat_card(self, parent, title: str, value: str, subtitle: str, 
                          color: str, col: int, row: int = 0):
         """Create a statistics card"""
-        card = ctk.CTkFrame(parent, fg_color="#1a1a2e", corner_radius=15)
+        # Detection for Windows 7 performance
+        import sys
+        win_ver = sys.getwindowsversion()
+        is_win7 = win_ver.major == 6 and win_ver.minor == 1
+        radius = 8 if is_win7 else 15
+        
+        card = ctk.CTkFrame(parent, fg_color="#1a1a2e", corner_radius=radius)
         card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
         
         # Title

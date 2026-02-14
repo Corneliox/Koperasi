@@ -26,8 +26,8 @@ DB_PATH = get_db_path()
 
 
 def get_connection():
-    """Get database connection with foreign keys enabled"""
-    conn = sqlite3.connect(DB_PATH)
+    """Get database connection with foreign keys enabled and timeout for stability"""
+    conn = sqlite3.connect(DB_PATH, timeout=20)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
     return conn

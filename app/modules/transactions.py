@@ -3,6 +3,7 @@ Transactions Module - Transaction History and Reporting
 """
 from datetime import datetime, timedelta
 from app.database.connection import get_connection
+from app.utils.decorators import handle_db_errors
 
 
 class TransactionManager:
@@ -15,6 +16,7 @@ class TransactionManager:
         """
         self.category_context = category_context
     
+    @handle_db_errors
     def get_transactions(self, member_id: int = None, 
                          start_date: str = None, end_date: str = None,
                          limit: int = 500, offset: int = 0) -> list:

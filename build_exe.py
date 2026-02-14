@@ -64,7 +64,6 @@ HIDDEN_IMPORTS = [
     
     # PDF Generation
     'fpdf',
-    'fpdf2',
     
     # Image Processing
     'PIL',
@@ -134,6 +133,9 @@ build_args.extend([
     '--collect-all=tkcalendar',
     '--collect-all=babel',
     '--collect-data=babel',
+    '--collect-submodules=pandas',
+    '--collect-submodules=PIL',
+    '--collect-all=fpdf2',
 ])
 
 def build():
