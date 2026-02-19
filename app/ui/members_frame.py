@@ -5,6 +5,9 @@ REFACTORED: Added fuzzy search for duplicate detection on new member registratio
 import customtkinter as ctk
 from tkinter import messagebox
 from app.modules.members import MemberManager
+from app.modules.warehouse import WarehouseManager
+from app.utils.receipt import generate_invoice
+from app.ui.common import HorizontalScrollWrapper
 
 
 class MembersFrame(ctk.CTkFrame):
@@ -86,7 +89,7 @@ class MembersFrame(ctk.CTkFrame):
             ("Satuan", 120, 1),  # Stretches a bit
             ("NRP", 100, 0),
             ("Telepon", 110, 0),
-            ("Aksi", 120, 0)
+            ("Aksi", 150, 0)
         ]
         
         for i, (text, width, weight) in enumerate(self.columns_config):
@@ -113,6 +116,7 @@ class MembersFrame(ctk.CTkFrame):
             widget.destroy()
         
         members = self.member_manager.get_all_members(search_term)
+        # print(f"DEBUG: Found {len(members)} members")
         
         if not members:
             no_data = ctk.CTkLabel(
@@ -127,57 +131,68 @@ class MembersFrame(ctk.CTkFrame):
     
     def create_row(self, row_idx: int, member: dict):
         """Create a member row"""
-        bg_color = "#1e293b" if row_idx % 2 == 0 else "#16213e"
-        
-        row_frame = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, height=45, corner_radius=5)
-        row_frame.grid(row=row_idx, column=0, columnspan=7, sticky="ew", pady=1)
-        row_frame.grid_propagate(False)
-        
-        for i, (_, width, weight) in enumerate(self.columns_config):
-            row_frame.grid_columnconfigure(i, minsize=width, weight=weight)
-        
-        # Data cells
-        ctk.CTkLabel(row_frame, text=str(member['id']),
-                     font=ctk.CTkFont(size=11), text_color="#cccccc"
-                     ).grid(row=0, column=0, padx=5, pady=8, sticky="w")
-        
-        ctk.CTkLabel(row_frame, text=member['name'][:25],
-                     font=ctk.CTkFont(size=11), text_color="#ffffff"
-                     ).grid(row=0, column=1, padx=5, pady=8, sticky="w")
-        
-        ctk.CTkLabel(row_frame, text=member.get('rank', '-') or '-',
-                     font=ctk.CTkFont(size=11), text_color="#cccccc"
-                     ).grid(row=0, column=2, padx=5, pady=8, sticky="w")
-        
-        ctk.CTkLabel(row_frame, text=member.get('unit', '-') or '-',
-                     font=ctk.CTkFont(size=11), text_color="#cccccc"
-                     ).grid(row=0, column=3, padx=5, pady=8, sticky="w")
-        
-        ctk.CTkLabel(row_frame, text=member.get('nrp', '-') or '-',
-                     font=ctk.CTkFont(size=11), text_color="#00d4ff"
-                     ).grid(row=0, column=4, padx=5, pady=8, sticky="w")
-        
-        ctk.CTkLabel(row_frame, text=member.get('phone', '-') or '-',
-                     font=ctk.CTkFont(size=11), text_color="#cccccc"
-                     ).grid(row=0, column=5, padx=5, pady=8, sticky="w")
-        
-        # Action buttons
-        action_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-        action_frame.grid(row=0, column=6, padx=5, pady=5, sticky="w")
-        
-        edit_btn = ctk.CTkButton(
-            action_frame, text="✏️", width=35, height=30,
-            fg_color="#3b82f6", hover_color="#2563eb",
-            corner_radius=5, command=lambda m=member: self.open_edit_dialog(m)
-        )
-        edit_btn.pack(side="left", padx=2)
-        
-        delete_btn = ctk.CTkButton(
-            action_frame, text="🗑️", width=35, height=30,
-            fg_color="#ef4444", hover_color="#dc2626",
-            corner_radius=5, command=lambda m=member: self.delete_member(m)
-        )
-        delete_btn.pack(side="left", padx=2)
+        try:
+            bg_color = "#1e293b" if row_idx % 2 == 0 else "#16213e"
+            
+            row_frame = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, height=45, corner_radius=5)
+            row_frame.grid(row=row_idx, column=0, columnspan=7, sticky="ew", pady=1)
+            row_frame.grid_propagate(False)
+            
+            for i, (_, width, weight) in enumerate(self.columns_config):
+                row_frame.grid_columnconfigure(i, minsize=width, weight=weight)
+            
+            # Data cells
+            ctk.CTkLabel(row_frame, text=str(member['id']),
+                         font=ctk.CTkFont(size=11), text_color="#cccccc"
+                         ).grid(row=0, column=0, padx=5, pady=8, sticky="w")
+            
+            ctk.CTkLabel(row_frame, text=member['name'][:25],
+                         font=ctk.CTkFont(size=11), text_color="#ffffff"
+                         ).grid(row=0, column=1, padx=5, pady=8, sticky="w")
+            
+            ctk.CTkLabel(row_frame, text=member.get('rank', '-') or '-',
+                         font=ctk.CTkFont(size=11), text_color="#cccccc"
+                         ).grid(row=0, column=2, padx=5, pady=8, sticky="w")
+            
+            ctk.CTkLabel(row_frame, text=member.get('unit', '-') or '-',
+                         font=ctk.CTkFont(size=11), text_color="#cccccc"
+                         ).grid(row=0, column=3, padx=5, pady=8, sticky="w")
+            
+            ctk.CTkLabel(row_frame, text=member.get('nrp', '-') or '-',
+                         font=ctk.CTkFont(size=11), text_color="#00d4ff"
+                         ).grid(row=0, column=4, padx=5, pady=8, sticky="w")
+            
+            ctk.CTkLabel(row_frame, text=member.get('phone', '-') or '-',
+                         font=ctk.CTkFont(size=11), text_color="#cccccc"
+                         ).grid(row=0, column=5, padx=5, pady=8, sticky="w")
+            
+            # Action buttons
+            action_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+            action_frame.grid(row=0, column=6, padx=5, pady=5, sticky="w")
+            
+            purchase_btn = ctk.CTkButton(
+                action_frame, text="🛒", width=35, height=30,
+                fg_color="#4ade80", hover_color="#22c55e",
+                text_color="#000",
+                corner_radius=5, command=lambda m=member: self.open_purchase_dialog(m)
+            )
+            purchase_btn.pack(side="left", padx=2)
+            
+            edit_btn = ctk.CTkButton(
+                action_frame, text="✏️", width=35, height=30,
+                fg_color="#3b82f6", hover_color="#2563eb",
+                corner_radius=5, command=lambda m=member: self.open_edit_dialog(m)
+            )
+            edit_btn.pack(side="left", padx=2)
+            
+            delete_btn = ctk.CTkButton(
+                action_frame, text="🗑️", width=35, height=30,
+                fg_color="#ef4444", hover_color="#dc2626",
+                corner_radius=5, command=lambda m=member: self.delete_member(m)
+            )
+            delete_btn.pack(side="left", padx=2)
+        except Exception as e:
+            print(f"ERROR rendering member row {row_idx}: {e}")
     
     def search_members(self):
         """Search members"""
@@ -188,6 +203,17 @@ class MembersFrame(ctk.CTkFrame):
         """Refresh table"""
         self.search_entry.delete(0, "end")
         self.load_data()
+    
+    def open_purchase_dialog(self, member: dict):
+        """Open purchase dialog for a member"""
+        window_key = f"purchase_member_{member['id']}"
+        if window_key in self.active_windows:
+            self.active_windows[window_key].lift()
+            return
+        
+        dialog = MemberPurchaseDialog(self, member, self.current_user)
+        self.active_windows[window_key] = dialog
+        dialog.protocol("WM_DELETE_WINDOW", lambda: self.close_window(window_key))
     
     def open_add_dialog(self):
         """Open add member dialog"""
@@ -220,24 +246,45 @@ class MembersFrame(ctk.CTkFrame):
             del self.active_windows[window_key]
     
     def on_member_saved(self, data: dict, member_id: int = None):
-        """Handle member save"""
+        """Handle member save with stay or close option"""
+        # Check if we are quitting to avoid multiple popups
+        try:
+            is_quitting = getattr(self.winfo_toplevel(), 'is_quitting', False)
+        except:
+            is_quitting = False
+
         if member_id:
             result = self.member_manager.update_member(
                 member_id, data['name'], data['rank'], data['unit'],
                 data['nrp'], data['phone'], data['address'], data['membership_status']
             )
-            self.close_window(f"edit_member_{member_id}")
+            if result['success']:
+                if not is_quitting:
+                    self.load_data()
+                
+                if is_quitting:
+                    self.close_window(f"edit_member_{member_id}")
+                elif messagebox.askyesno("Sukses", "Data anggota berhasil diupdate.\n\nApakah Anda ingin menutup jendela ini?"):
+                    self.close_window(f"edit_member_{member_id}")
+            else:
+                if not is_quitting:
+                    messagebox.showerror("Error", result['message'])
         else:
             result = self.member_manager.add_member(
                 data['name'], data['rank'], data['unit'],
                 data['nrp'], data['phone'], data['address'], data['membership_status']
             )
-            self.close_window("add_member")
-        
-        if result['success']:
-            self.load_data()
-        else:
-            messagebox.showerror("Error", result['message'])
+            if result['success']:
+                if not is_quitting:
+                    self.load_data()
+                
+                if is_quitting:
+                    self.close_window("add_member")
+                elif messagebox.askyesno("Sukses", "Data berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
+                    self.close_window("add_member")
+            else:
+                if not is_quitting:
+                    messagebox.showerror("Error", result['message'])
     
     def delete_member(self, member: dict):
         """Delete member"""
@@ -524,9 +571,15 @@ class MemberDialog(ctk.CTkToplevel):
     
     def save(self):
         """Save member with duplicate check"""
+        try:
+            is_quitting = getattr(self.winfo_toplevel(), 'is_quitting', False)
+        except:
+            is_quitting = False
+
         name = self.name_entry.get().strip()
         if not name:
-            messagebox.showerror("Error", "Nama harus diisi!")
+            if not is_quitting:
+                messagebox.showerror("Error", "Nama harus diisi!")
             return
         
         # Check duplicate warning for new members
@@ -536,12 +589,13 @@ class MemberDialog(ctk.CTkToplevel):
                 name, self.nrp_entry.get().strip()
             )
             if result['has_duplicate']:
-                messagebox.showwarning(
-                    "Peringatan", 
-                    "Terdapat anggota dengan nama serupa.\n\n"
-                    "Klik 'Tetap Buat Baru' pada peringatan jika ingin melanjutkan."
-                )
-                self.check_duplicate_name()
+                if not is_quitting:
+                    messagebox.showwarning(
+                        "Peringatan", 
+                        "Terdapat anggota dengan nama serupa.\n\n"
+                        "Klik 'Tetap Buat Baru' pada peringatan jika ingin melanjutkan."
+                    )
+                    self.check_duplicate_name()
                 return
         
         data = {
@@ -556,3 +610,376 @@ class MemberDialog(ctk.CTkToplevel):
         
         self.on_save(data, self.member['id'] if self.member else None)
 
+
+class MemberPurchaseDialog(ctk.CTkToplevel):
+    """
+    Dialog for bulk purchasing items for a specific member.
+    Allows selecting multiple items across categories and checkout.
+    """
+    
+    def __init__(self, parent, member: dict, current_user: str):
+        super().__init__(parent)
+        self.member = member
+        self.current_user = current_user
+        self.parent = parent
+        
+        # Managers
+        self.warehouse_sembako = WarehouseManager("SEMBAKO", current_user)
+        self.warehouse_taktikal = WarehouseManager("TAKTIKAL", current_user)
+        self.current_warehouse = self.warehouse_sembako
+        
+        # Shopping Cart: {item_id: {'name': name, 'qty': qty, 'price': price, 'category': cat}}
+        self.cart = {}
+        
+        self.title(f"🛒 Belanja: {member['name']}")
+        self.configure(fg_color="#1a1a2e")
+        self.minsize(900, 700)
+        
+        # Center window
+        self.update_idletasks()
+        window_width = 1000
+        window_height = 750
+        x = (self.winfo_screenwidth() - window_width) // 2
+        y = (self.winfo_screenheight() - window_height) // 2
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        self.grid_columnconfigure(0, weight=3) # Product list
+        self.grid_columnconfigure(1, weight=2) # Cart
+        self.grid_rowconfigure(0, weight=1)
+        
+        self.create_widgets()
+        self.load_items()
+        
+        self.grab_set()
+        self.focus_force()
+
+    def create_widgets(self):
+        """Create UI components"""
+        # --- LEFT SIDE: PRODUCT LIST ---
+        self.left_panel = ctk.CTkFrame(self, fg_color="transparent")
+        self.left_panel.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.left_panel.grid_columnconfigure(0, weight=1)
+        self.left_panel.grid_rowconfigure(1, weight=1)
+        
+        # Search & Filter Header
+        header = ctk.CTkFrame(self.left_panel, fg_color="#16213e", corner_radius=10)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        
+        ctk.CTkLabel(header, text="Cari Barang:", font=ctk.CTkFont(weight="bold")).pack(side="left", padx=15, pady=15)
+        
+        self.search_entry = ctk.CTkEntry(header, width=250, placeholder_text="Ketik nama barang...")
+        self.search_entry.pack(side="left", padx=5, pady=15)
+        self.search_entry.bind("<KeyRelease>", lambda e: self.load_items())
+        
+        self.category_var = ctk.StringVar(value="SEMBAKO")
+        self.cat_menu = ctk.CTkOptionMenu(
+            header, values=["SEMBAKO", "TAKTIKAL"],
+            variable=self.category_var,
+            command=self.on_category_change,
+            fg_color="#374151", button_color="#4b5563"
+        )
+        self.cat_menu.pack(side="left", padx=10, pady=15)
+        
+        # Product Table
+        self.items_scroll = ctk.CTkScrollableFrame(self.left_panel, fg_color="#16213e", corner_radius=10)
+        self.items_scroll.grid(row=1, column=0, sticky="nsew")
+        self.items_scroll.grid_columnconfigure(0, weight=1)
+        
+        # --- RIGHT SIDE: SHOPPING CART ---
+        self.right_panel = ctk.CTkFrame(self, fg_color="#16213e", corner_radius=10)
+        self.right_panel.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.right_panel.grid_columnconfigure(0, weight=1)
+        self.right_panel.grid_rowconfigure(2, weight=1)
+        
+        # Cart Header
+        ctk.CTkLabel(
+            self.right_panel, text="🛒 Keranjang Belanja",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#00d4ff"
+        ).grid(row=0, column=0, pady=15)
+        
+        member_info = ctk.CTkLabel(
+            self.right_panel, text=f"Anggota: {self.member['name']}\nNRP: {self.member.get('nrp','-')}",
+            font=ctk.CTkFont(size=12), text_color="#aaa"
+        )
+        member_info.grid(row=1, column=0, pady=(0, 10))
+        
+        # Cart Items List
+        self.cart_scroll = ctk.CTkScrollableFrame(self.right_panel, fg_color="transparent")
+        self.cart_scroll.grid(row=2, column=0, sticky="nsew", padx=5)
+        self.cart_scroll.grid_columnconfigure(0, weight=1)
+        
+        # Checkout Summary
+        self.summary_frame = ctk.CTkFrame(self.right_panel, fg_color="#1e293b", corner_radius=10)
+        self.summary_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
+        
+        self.total_label = ctk.CTkLabel(
+            self.summary_frame, text="Total: Rp 0",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#4ade80"
+        )
+        self.total_label.pack(pady=10)
+        
+        # Payment Method
+        method_frame = ctk.CTkFrame(self.summary_frame, fg_color="transparent")
+        method_frame.pack(pady=5)
+        self.payment_var = ctk.StringVar(value="Tunai")
+        for m in ["Tunai", "Transfer", "QRIS"]:
+            ctk.CTkRadioButton(method_frame, text=m, variable=self.payment_var, value=m, font=ctk.CTkFont(size=11)).pack(side="left", padx=5)
+            
+        self.invoice_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(self.summary_frame, text="Cetak Invoice PDF", variable=self.invoice_var).pack(pady=5)
+        
+        self.checkout_btn = ctk.CTkButton(
+            self.summary_frame, text="CHECKOUT & SIMPAN",
+            height=45, fg_color="#4ade80", hover_color="#22c55e",
+            text_color="#000", font=ctk.CTkFont(weight="bold"),
+            command=self.process_checkout
+        )
+        self.checkout_btn.pack(fill="x", padx=20, pady=15)
+
+    def on_category_change(self, cat):
+        """Switch warehouse category"""
+        self.current_warehouse = self.warehouse_sembako if cat == "SEMBAKO" else self.warehouse_taktikal
+        self.load_items()
+
+    def load_items(self):
+        """Load items from current warehouse category"""
+        for widget in self.items_scroll.winfo_children():
+            widget.destroy()
+            
+        search = self.search_entry.get().strip()
+        items = self.current_warehouse.get_all_items(search if search else None)
+        
+        if not items:
+            ctk.CTkLabel(self.items_scroll, text="Tidak ada barang ditemukan", text_color="#888").pack(pady=20)
+            return
+            
+        for item in items:
+            self.create_item_row(item)
+
+    def create_item_row(self, item: dict):
+        """Create a row for product selection"""
+        if not item.get('is_active', 1): return
+        
+        row = ctk.CTkFrame(self.items_scroll, fg_color="#1e293b", height=50)
+        row.pack(fill="x", pady=2, padx=5)
+        row.pack_propagate(False)
+        
+        # Info
+        name_lbl = ctk.CTkLabel(row, text=item['name'][:30], font=ctk.CTkFont(size=12))
+        name_lbl.pack(side="left", padx=10)
+        
+        stock_lbl = ctk.CTkLabel(row, text=f"Stok: {item['stock']}", font=ctk.CTkFont(size=11), text_color="#aaa")
+        stock_lbl.pack(side="left", padx=10)
+        
+        price_lbl = ctk.CTkLabel(row, text=f"Rp {item['sell_price']:,.0f}", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4ade80")
+        price_lbl.pack(side="left", padx=10)
+        
+        # Add to cart controls
+        add_frame = ctk.CTkFrame(row, fg_color="transparent")
+        add_frame.pack(side="right", padx=10)
+        
+        qty_input = ctk.CTkEntry(add_frame, width=50, height=28)
+        qty_input.insert(0, "1")
+        qty_input.pack(side="left", padx=5)
+        
+        add_btn = ctk.CTkButton(
+            add_frame, text="+", width=30, height=28,
+            fg_color="#3b82f6", hover_color="#2563eb",
+            command=lambda i=item, q=qty_input: self.add_to_cart(i, q)
+        )
+        add_btn.pack(side="left")
+
+    def add_to_cart(self, item: dict, qty_input):
+        """Add item to shopping cart"""
+        try:
+            qty = int(qty_input.get())
+        except ValueError:
+            messagebox.showerror("Error", "Jumlah harus berupa angka")
+            return
+            
+        if qty <= 0: return
+        if qty > item['stock']:
+            messagebox.showerror("Error", f"Stok tidak cukup. Tersedia: {item['stock']}")
+            return
+            
+        cart_id = f"{self.category_var.get()}_{item['id']}"
+        
+        if cart_id in self.cart:
+            new_qty = self.cart[cart_id]['qty'] + qty
+            if new_qty > item['stock']:
+                messagebox.showerror("Error", "Total di keranjang melebihi stok")
+                return
+            self.cart[cart_id]['qty'] = new_qty
+        else:
+            self.cart[cart_id] = {
+                'id': item['id'],
+                'name': item['name'],
+                'qty': qty,
+                'price': item['sell_price'],
+                'category': self.category_var.get()
+            }
+            
+        self.update_cart_display()
+        qty_input.delete(0, "end")
+        qty_input.insert(0, "1")
+
+    def update_cart_display(self):
+        """Refresh the cart items list and total"""
+        for widget in self.cart_scroll.winfo_children():
+            widget.destroy()
+            
+        total = 0
+        for cart_id, data in self.cart.items():
+            subtotal = data['qty'] * data['price']
+            total += subtotal
+            
+            row = ctk.CTkFrame(self.cart_scroll, fg_color="#1e293b", corner_radius=5)
+            row.pack(fill="x", pady=2, padx=2)
+            
+            lbl_text = f"{data['name'][:20]}\nRp {data['price']:,.0f}"
+            ctk.CTkLabel(row, text=lbl_text, font=ctk.CTkFont(size=11), justify="left", anchor="w").pack(side="left", padx=10, pady=5)
+            
+            # Action controls (Right side)
+            ctrl_frame = ctk.CTkFrame(row, fg_color="transparent")
+            ctrl_frame.pack(side="right", padx=5)
+            
+            # Remove entirely
+            ctk.CTkButton(
+                ctrl_frame, text="X", width=25, height=25,
+                fg_color="#ef4444", hover_color="#dc2626",
+                command=lambda cid=cart_id: self.remove_from_cart(cid)
+            ).pack(side="right", padx=5)
+            
+            # Qty Controls
+            qty_frame = ctk.CTkFrame(ctrl_frame, fg_color="transparent")
+            qty_frame.pack(side="right", padx=5)
+            
+            ctk.CTkButton(qty_frame, text="-", width=25, height=25, 
+                          fg_color="#374151", command=lambda cid=cart_id: self.change_cart_qty(cid, -1)).pack(side="left")
+            
+            ctk.CTkLabel(qty_frame, text=str(data['qty']), width=30, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=2)
+            
+            ctk.CTkButton(qty_frame, text="+", width=25, height=25, 
+                          fg_color="#374151", command=lambda cid=cart_id: self.change_cart_qty(cid, 1)).pack(side="left")
+
+            ctk.CTkLabel(row, text=f"Rp {subtotal:,.0f}", font=ctk.CTkFont(size=11, weight="bold")).pack(side="right", padx=5)
+            
+        self.total_label.configure(text=f"Total: Rp {total:,.0f}")
+
+    def change_cart_qty(self, cart_id, delta):
+        """Increase or decrease quantity in cart"""
+        if cart_id not in self.cart: return
+        
+        new_qty = self.cart[cart_id]['qty'] + delta
+        if new_qty <= 0:
+            self.remove_from_cart(cart_id)
+        else:
+            # Check stock if increasing
+            if delta > 0:
+                # We need to find the item in warehouse to check stock
+                cat = self.cart[cart_id]['category']
+                wh = self.warehouse_sembako if cat == "SEMBAKO" else self.warehouse_taktikal
+                item = wh.get_item_by_id(self.cart[cart_id]['id'])
+                if item and new_qty > item['stock']:
+                    messagebox.showerror("Error", f"Stok tidak cukup. Tersedia: {item['stock']}")
+                    return
+            
+            self.cart[cart_id]['qty'] = new_qty
+            self.update_cart_display()
+
+    def remove_from_cart(self, cart_id):
+        """Remove item from cart"""
+        if cart_id in self.cart:
+            del self.cart[cart_id]
+            self.update_cart_display()
+
+    def process_checkout(self, silent=False):
+        """Execute checkout process across categories"""
+        try:
+            is_quitting = getattr(self.winfo_toplevel(), 'is_quitting', False)
+        except:
+            is_quitting = False
+            
+        if silent: is_quitting = True
+
+        if not self.cart:
+            if not is_quitting: messagebox.showwarning("Keranjang Kosong", "Pilih barang terlebih dahulu!")
+            return
+            
+        if not is_quitting and not messagebox.askyesno("Konfirmasi", f"Proses checkout untuk {len(self.cart)} item?"):
+            return
+            
+        # Group by category for backend calls (although we added sell_items_bulk, 
+        # it's bound to a specific manager's category context)
+        sembako_items = [v for k, v in self.cart.items() if v['category'] == "SEMBAKO"]
+        taktikal_items = [v for k, v in self.cart.items() if v['category'] == "TAKTIKAL"]
+        
+        success_items = []
+        total_billed = 0
+        payment_method = self.payment_var.get()
+        
+        # Process Sembako
+        if sembako_items:
+            res = self.warehouse_sembako.sell_items_bulk(sembako_items, self.member['id'], payment_method)
+            if res['success']:
+                success_items.extend(res['items'])
+                total_billed += res['total']
+            else:
+                if not is_quitting: messagebox.showerror("Error Sembako", res['message'])
+                return
+                
+        # Process Taktikal
+        if taktikal_items:
+            res = self.warehouse_taktikal.sell_items_bulk(taktikal_items, self.member['id'], payment_method)
+            if res['success']:
+                # Tag items with category for invoice
+                for item in res['items']:
+                    item['category'] = 'TAKTIKAL'
+                success_items.extend(res['items'])
+                total_billed += res['total']
+            else:
+                if not is_quitting: messagebox.showerror("Error Taktikal", res['message'])
+                return
+        
+        # Success Handling
+        if success_items:
+            msg = f"Checkout Berhasil!\nTotal: Rp {total_billed:,.0f}"
+            
+            if self.invoice_var.get():
+                try:
+                    # Format for generate_invoice
+                    inv_items = []
+                    for it in success_items:
+                        inv_items.append({
+                            'item_name': it['name'],
+                            'qty': it['qty'],
+                            'unit_price': it['price']
+                        })
+                    
+                    path = generate_invoice(inv_items, self.member)
+                    msg += f"\n\nInvoice disimpan di:\n{path}"
+                except Exception as e:
+                    msg += f"\n\n(Gagal cetak invoice: {str(e)})"
+            
+            if not is_quitting: messagebox.showinfo("Sukses", msg)
+            
+            # Safe destroy
+            try:
+                if self.winfo_exists():
+                    self.destroy()
+            except:
+                pass
+                
+            # If parent frame exists and is not destroyed, refresh it
+            try:
+                if not is_quitting and self.parent and self.parent.winfo_exists():
+                    self.parent.load_data()
+            except:
+                pass
+    
+        def sell(self):
+            """Alias for save_all_dialogs to find during quit"""
+            self.process_checkout(silent=True)
+        

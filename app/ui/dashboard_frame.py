@@ -22,7 +22,12 @@ class DashboardFrame(ctk.CTkFrame):
         self.configure(fg_color="transparent")
         
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        # Main scrollable container
+        self.main_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.main_scroll.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        self.main_scroll.grid_columnconfigure(0, weight=1)
         
         self.create_header()
         self.create_stats_section()
@@ -30,7 +35,7 @@ class DashboardFrame(ctk.CTkFrame):
     
     def create_header(self):
         """Create dashboard header"""
-        self.header_frame = ctk.CTkFrame(self, fg_color="#1a1a2e", corner_radius=10)
+        self.header_frame = ctk.CTkFrame(self.main_scroll, fg_color="#1a1a2e", corner_radius=10)
         self.header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
         
         # Welcome message
@@ -69,12 +74,12 @@ class DashboardFrame(ctk.CTkFrame):
     
     def create_stats_section(self):
         """Create statistics cards"""
-        self.stats_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.stats_frame.grid(row=1, column=0, sticky="new", padx=10, pady=10)
+        self.stats_frame = ctk.CTkFrame(self.main_scroll, fg_color="transparent")
+        self.stats_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=10)
         
-        # Configure grid for cards
+        # Configure grid for cards - Ensure they don't squash too much
         for i in range(4):
-            self.stats_frame.grid_columnconfigure(i, weight=1)
+            self.stats_frame.grid_columnconfigure(i, weight=1, minsize=200)
         
         self.load_stats()
     
@@ -205,7 +210,7 @@ class DashboardFrame(ctk.CTkFrame):
     
     def create_quick_info(self):
         """Create quick info section with low stock items"""
-        self.info_frame = ctk.CTkFrame(self, fg_color="#1a1a2e", corner_radius=10)
+        self.info_frame = ctk.CTkFrame(self.main_scroll, fg_color="#1a1a2e", corner_radius=10)
         self.info_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
         
         # Title

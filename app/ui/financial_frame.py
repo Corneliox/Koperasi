@@ -70,15 +70,15 @@ class FinancialReportsFrame(ctk.CTkFrame):
             font=ctk.CTkFont(size=12), text_color="#cccccc"
         ).pack(side="left", padx=(0, 5))
         
-        self.period_var = ctk.StringVar(value="Bulan Ini")
+        self.period_var = ctk.StringVar(value="15-15 (Bulanan)")
         self.period_menu = ctk.CTkOptionMenu(
             controls_frame,
-            values=["Hari Ini", "7 Hari", "Bulan Ini", "Tahun Ini", "Custom"],
+            values=["15-15 (Bulanan)", "Hari Ini", "7 Hari", "Bulan Ini", "Tahun Ini", "Custom"],
             variable=self.period_var,
-            width=120,
+            width=140,
             height=35,
-            fg_color="#374151",
-            button_color="#4b5563",
+            fg_color="#8b5cf6", # Purple to highlight it's the main one
+            button_color="#7c3aed",
             command=self.on_period_change
         )
         self.period_menu.pack(side="left", padx=5)
@@ -152,7 +152,26 @@ class FinancialReportsFrame(ctk.CTkFrame):
         today = datetime.now().date()
         period = self.period_var.get()
         
-        if period == "Hari Ini":
+        if period == "15-15 (Bulanan)":
+            # If today is >= 15, range is 15th this month to 15th next month
+            # If today is < 15, range is 15th last month to 15th this month
+            if today.day >= 15:
+                start = today.replace(day=15)
+                # Next month handling
+                if today.month == 12:
+                    end = today.replace(year=today.year + 1, month=1, day=15)
+                else:
+                    end = today.replace(month=today.month + 1, day=15)
+            else:
+                end = today.replace(day=15)
+                # Last month handling
+                if today.month == 1:
+                    start = today.replace(year=today.year - 1, month=12, day=15)
+                else:
+                    start = today.replace(month=today.month - 1, day=15)
+            return start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
+            
+        elif period == "Hari Ini":
             return today.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d')
         elif period == "7 Hari":
             return (today - timedelta(days=7)).strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d')

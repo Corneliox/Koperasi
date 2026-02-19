@@ -1,0 +1,132 @@
+--- Update 26/2/20 --- Major Hot Fix
+
+  1. Optimalisasi Kompatibilitas Windows 7
+   * Perbaikan Ikon & Emoji: Karena Windows 7 tidak mendukung emoji modern, saya membuat sistem Emoji Fixer. Sistem ini
+     otomatis menghapus emoji dekoratif agar tampilan bersih dan mengganti emoji fungsional (seperti ✏️ atau 🗑️) menjadi
+     teks (Edit, Hapus) agar tombol tidak kosong.
+   * Monkey-Patching CustomTkinter: Mengintegrasikan sistem perbaikan emoji secara global ke dalam komponen
+     customtkinter sehingga seluruh aplikasi otomatis menyesuaikan diri saat berjalan di Windows 7.
+   * Window Icon: Memastikan ikon aplikasi (.ico) muncul di taskbar dan frame jendela menggunakan metode iconbitmap.
+
+
+  2. Fitur Baru: Pembelian Bulk (Grosir) via Menu Anggota
+   * Tombol Belanja (🛒): Menambahkan tombol keranjang belanja langsung di setiap baris tabel Anggota.
+   * MemberPurchaseDialog: Dialog baru yang memungkinkan admin memilih banyak barang sekaligus (baik Sembako maupun
+     Taktikal) untuk satu anggota dalam satu transaksi.
+   * Kontrol Kuantitas: Menambahkan tombol + dan - di dalam keranjang belanja untuk menambah atau mengurangi jumlah
+     barang sebelum checkout.
+   * Invoice PDF: Fitur otomatis cetak struk/invoice dalam format PDF setelah pembelian bulk berhasil.
+
+
+  3. Fitur Baru: Laporan Keuangan "15 ke 15"
+   * Periode Default Baru: Mengubah periode default pada laporan Neraca Keuangan menjadi "15-15 (Bulanan)".
+   * Logika Otomatis: Sistem sekarang otomatis menghitung rentang tanggal dari tanggal 15 bulan lalu ke tanggal 15 bulan
+     ini (atau 15 bulan ini ke 15 bulan depan) tergantung pada tanggal hari ini.
+
+
+  4. Sistem Otomatisasi: Daily Aggregation Job
+   * Background Thread: Menambahkan fungsi yang berjalan di latar belakang (tanpa mengganggu UI) untuk melakukan
+     agregasi data setiap tengah malam (00:00 WIB).
+   * Laporan Harian: Sistem akan memproses total transaksi, rata-rata nilai penjualan, pembayaran pinjaman, dan
+     mendeteksi anomali (transaksi di atas Rp 5.000.000).
+   * Log Laporan: Hasilnya disimpan secara otomatis di folder logs/daily_reports/.
+
+
+  5. Peningkatan UI & Alur Kerja (Workflow)
+   * Popup Stay/Close: Sekarang, setelah menambah atau mengedit Anggota, Barang, Pinjaman, atau Pembayaran, muncul popup
+     konfirmasi: "Data berhasil disimpan. Apakah Anda ingin menutup jendela ini?".
+   * Dashboard Responsif: Memperbaiki layout Dashboard agar menggunakan sistem scroll, mencegah tampilan saling tumpang
+     tindih pada layar dengan resolusi kecil (seperti di Windows 7).
+   * Safety Refresh: Menambahkan pengecekan winfo_exists sebelum merefresh tabel untuk mencegah crash jika user menutup
+     jendela saat data sedang dimuat.
+
+
+  6. Perbaikan Teknis & Stabilitas (Bug Fixes)
+   * Fix Circular Import: Memperbaiki error ImportError dengan merestrukturisasi penempatan class antar file.
+   * Fix Indentation: Memperbaiki beberapa kesalahan indentasi pada main.py yang sempat menyebabkan aplikasi tidak bisa
+     terbuka.
+   * Penanganan Race Condition: Mengimplementasikan flag is_quitting untuk memastikan aplikasi tidak mencoba merefresh
+     UI atau menampilkan popup saat proses Save All & Exit sedang berjalan.
+   * Induk Paket: Membuat file app/__init__.py yang hilang agar folder aplikasi dikenali dengan benar oleh Python.
+
+
+  Status Saat Ini: Aplikasi dalam kondisi stabil, kompatibel dengan Windows 7, dan seluruh fitur baru (Bulk Purchase,
+  Laporan 15-15, Midnight Job, dan Popup Konfirmasi) telah aktif.
+
+--- Update 26/2/15 ---
+
+Berikut adalah ringkasan perubahan yang telah dilakukan:
+
+
+   1. Program Protokol Diagnostik (`diagnostics.py`):
+       * Dapat dijalankan dengan perintah python diagnostics.py.
+       * Mengecek keseluruhan fungsi: Informasi sistem, dependensi, modul internal, koneksi database, izin file, dan
+         inisialisasi UI.
+       * Menghasilkan output Log detail di logs/diagnostics.log.
+
+
+   2. Penanganan Error & Crash Global (`app/utils/error_handler.py`):
+       * Popup Error: Setiap error yang tidak tertangani akan memicu popup informatif menggunakan sys.excepthook.
+       * Logging Terstruktur: Error dicatat ke logs/crash_reports.log dan database audit_log.
+       * Laporan Crash Detil: Setiap crash akan membuat file laporan khusus di folder logs/ (misal:
+         crash_report_20260214_...txt) yang berisi traceback lengkap dan informasi sistem untuk memudahkan perbaikan.
+
+   3. Integrasi Aplikasi (`main.py`):
+       * Aplikasi utama sekarang secara otomatis mengaktifkan sistem penanganan error saat dijalankan.
+
+
+   4. Penanganan Eksepsi Terperinci (`app/utils/decorators.py`):
+       * Menambahkan decorator @handle_db_errors pada modul inti (warehouse.py dan transactions.py) untuk menangkap
+         error database secara spesifik, memberikan notifikasi kepada pengguna, dan mencatatnya ke log tanpa membuat
+         aplikasi langsung menutup (force close).
+
+
+  Lokasi Log Penting:
+   * logs/diagnostics.log: Hasil pengecekan kesehatan sistem.
+   * logs/crash_reports.log: Daftar kronologis semua crash yang terjadi.
+   * logs/crash_report_[TIMESTAMP].txt: Detail teknis mendalam untuk setiap crash spesifik.
+
+--- Update 26/2/12 ---
+
+1. Keamanan & Persistensi Data (Anti Data-Loss)
+   * Migrasi Database ke AppData: Database (koperasi_brimob.db) dipindahkan dari folder instalasi ke %APPDATA%/KoperasiBrimob/. Hal ini memastikan data
+     TIDAK HILANG saat aplikasi di-update, di-install ulang, atau dihapus file .exe-nya.
+   * Auto-Migration: Sistem secara otomatis mendeteksi jika ada database lama di folder aplikasi dan memindahkannya ke lokasi baru saat aplikasi dijalankan
+     pertama kali.
+   * Global Save All & Exit: Implementasi dialog konfirmasi baru saat menutup aplikasi atau logout. Terdapat tombol "💾 Save All & Proceed" yang secara
+     otomatis mendeteksi semua jendela yang masih terbuka (Anggota, Inventaris, Pinjaman) dan menyimpannya sekaligus sebelum keluar.
+
+
+2. Modul Inventaris (Gudang) - Update Besar
+   * Kolom Baru: Penambahan kolom Kodebrg (Item Code) dan Status Aktif (Ya/Tidak).
+   * Fitur Sortir: Header kolom ID, Kodebrg, Status, dan Aktif kini dapat diklik untuk mengurutkan data (A-Z / Z-A).
+   * Logika Deaktivasi: Barang yang ditandai "Tidak Aktif" akan berwarna kemerahan di tabel dan tombol "Jual" akan otomatis terkunci (Disabled).
+   * Kalkulasi Otomatis: Sistem kini menghitung secara real-time:
+       * Laba: (Harga Jual - Harga Pokok).
+       * Harga Aset: (Harga Jual * Stok).
+   * Perbaikan Dialog Edit: Menampilkan kembali field Status Aktif dan Keterangan yang sempat hilang, serta memperbaiki bug simpan data.
+
+
+3. Modul Anggota & Penjualan
+   * Status Keanggotaan: Penambahan pilihan status "Anggota Koperasi" atau "Umum" pada data anggota.
+   * Smart Redirect di Penjualan: Saat melakukan transaksi, jika nama anggota tidak ditemukan:
+       * Sistem akan memberi peringatan dan menawarkan untuk menambah anggota baru.
+       * Jika setuju, akan diarahkan ke dialog tambah anggota dengan pengecekan duplikasi otomatis.
+       * Setelah simpan, sistem otomatis kembali ke transaksi dengan anggota yang baru dibuat tersebut terpilih.
+
+
+4. Optimalisasi User Experience (UX)
+   * Sistem Autosave Selektif:
+       * Aktif: Pada modul Anggota dan Pinjaman (data tersimpan otomatis saat pindah input).
+       * Manual: Pada modul Inventaris (memerlukan klik tombol "Simpan" sesuai permintaan).
+   * Pencegahan Double-Save: Implementasi sistem Lock (saving_in_progress) dan Debounce untuk mencegah error "Double Log" atau data ganda saat mengedit
+     cepat.
+   * Kompatibilitas Windows 7: Perbaikan posisi jendela pop-up (transient) dan penyesuaian DPI agar tampilan tetap rapi di OS lama.
+
+
+5. Installer & Uninstaller Pro (Inno Setup)
+   * Custom Installation Path: Installer kini memberikan pilihan lokasi instalasi kepada user.
+   * Uninstaller Cerdas: Saat aplikasi dihapus, muncul pilihan:
+       * NO: Hanya hapus aplikasi (Database aman).
+       * YES: Hapus aplikasi sekaligus bersih-bersih seluruh database.
+   * Update-Ready: Struktur installer sudah siap untuk pengiriman update ke klien tanpa mengganggu data transaksi yang sudah berjalan.

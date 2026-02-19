@@ -12,6 +12,9 @@ import ctypes
 import platform
 import subprocess
 import tkinter.messagebox
+import threading
+import time
+from datetime import datetime, timedelta
 
 # Enable DPI awareness for Windows
 if sys.platform == 'win32':
@@ -42,6 +45,44 @@ if sys.platform == 'win32':
 import customtkinter as ctk
 from app.utils.error_handler import setup_global_error_handler
 from app.database.connection import init_database
+from app.utils.emoji_fix import fix_emoji
+
+# Monkey patch CTk components for Windows 7 emoji fallback
+def patch_ctk_for_win7():
+    """Apply global monkey-patches for Windows 7 compatibility"""
+    try:
+        import sys
+        is_win7 = sys.getwindowsversion().major == 6 and sys.getwindowsversion().minor == 1
+        if not is_win7:
+            return
+    except:
+        return
+
+    # Patch CTkLabel
+    original_label_init = ctk.CTkLabel.__init__
+    def patched_label_init(self, *args, **kwargs):
+        if 'text' in kwargs and isinstance(kwargs['text'], str):
+            kwargs['text'] = fix_emoji(kwargs['text'])
+        original_label_init(self, *args, **kwargs)
+    ctk.CTkLabel.__init__ = patched_label_init
+
+    # Patch CTkButton
+    original_button_init = ctk.CTkButton.__init__
+    def patched_button_init(self, *args, **kwargs):
+        if 'text' in kwargs and isinstance(kwargs['text'], str):
+            kwargs['text'] = fix_emoji(kwargs['text'])
+        original_button_init(self, *args, **kwargs)
+    ctk.CTkButton.__init__ = patched_button_init
+
+    # Patch CTkEntry
+    original_entry_init = ctk.CTkEntry.__init__
+    def patched_entry_init(self, *args, **kwargs):
+        if 'placeholder_text' in kwargs and isinstance(kwargs['placeholder_text'], str):
+            kwargs['placeholder_text'] = fix_emoji(kwargs['placeholder_text'])
+        original_entry_init(self, *args, **kwargs)
+    ctk.CTkEntry.__init__ = patched_entry_init
+    # Initialize compatibility patches
+patch_ctk_for_win7()
 
 # Initialize global error handling
 setup_global_error_handler()
@@ -89,6 +130,13 @@ class KoperasiBrimobApp(ctk.CTk):
         # Window configuration
         self.title("Koperasi Brimob - Sistem Manajemen")
         
+        # Set icon
+        if os.path.exists("icon.ico"):
+            try:
+                self.iconbitmap("icon.ico")
+            except Exception:
+                pass
+        
         # Calculate initial geometry based on screen
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
@@ -125,9 +173,15 @@ class KoperasiBrimobApp(ctk.CTk):
         # Active windows registry (for anti-duplicate)
         self.active_windows = {}
         
+        # State flag for shutdown
+        self.is_quitting = False
+        
         # Easter egg counter for reset modal
         self.easter_egg_clicks = 0
         self.easter_egg_timer = None
+        
+        # Start background daily job
+        self.start_daily_job()
         
         # Start with login
         self.show_login()
@@ -145,13 +199,17 @@ class KoperasiBrimobApp(ctk.CTk):
         self.wait_window(dialog)
         
         if dialog.result == "save_proceed":
+            self.is_quitting = True
             if self.save_all_dialogs():
                 tkinter.messagebox.showinfo("Sukses", "Semua data telah berhasil disimpan.")
                 if is_logout:
+                    self.is_quitting = False # Reset if just logout
                     self.perform_logout()
                 else:
                     self.destroy()
                     sys.exit(0)
+            else:
+                self.is_quitting = False # Reset if failed
         elif dialog.result == "proceed_only":
             if is_logout:
                 self.perform_logout()
@@ -164,45 +222,138 @@ class KoperasiBrimobApp(ctk.CTk):
         """Find all active dialogs and trigger their save methods. Returns True if all saved."""
         all_saved = True
         
-        def find_dialogs(parent):
-            dialogs = []
-            for child in parent.winfo_children():
-                if isinstance(child, ctk.CTkToplevel):
-                    dialogs.append(child)
-                # Recurse into frames
-                if hasattr(child, 'winfo_children'):
-                    dialogs.extend(find_dialogs(child))
-            return dialogs
-
-        active_dialogs = find_dialogs(self)
-        
-        # Filter duplicates (sometimes winfo_children returns toplevels multiple times)
-        unique_dialogs = []
-        seen_ids = set()
-        for d in active_dialogs:
-            if id(d) not in seen_ids:
-                unique_dialogs.append(d)
-                seen_ids.add(id(d))
-
-        for dialog in unique_dialogs:
-            # Check for various save methods
-            save_method = None
-            for m in ['save', 'sell', 'process_return']:
-                if hasattr(dialog, m) and callable(getattr(dialog, m)):
-                    save_method = getattr(dialog, m)
-                    break
-            
-            if save_method:
+        try:
+            def find_dialogs(parent):
+                dialogs = []
                 try:
-                    save_method()
-                    # If dialog still exists, it means validation failed
-                    if dialog.winfo_exists():
-                        all_saved = False
+                    for child in parent.winfo_children():
+                        if isinstance(child, ctk.CTkToplevel):
+                            dialogs.append(child)
+                        # Recurse into frames
+                        if hasattr(child, 'winfo_children'):
+                            dialogs.extend(find_dialogs(child))
+                except:
+                    pass # Widget might have been destroyed
+                return dialogs
+
+            active_dialogs = find_dialogs(self)
+            
+            # Filter duplicates
+            unique_dialogs = []
+            seen_ids = set()
+            for d in active_dialogs:
+                try:
+                    if d.winfo_exists() and id(d) not in seen_ids:
+                        unique_dialogs.append(d)
+                        seen_ids.add(id(d))
+                except:
+                    pass
+
+            for dialog in unique_dialogs:
+                try:
+                    if not dialog.winfo_exists():
+                        continue
+                        
+                    # Check for various save methods
+                    save_method = None
+                    for m in ['save', 'sell', 'process_return']:
+                        if hasattr(dialog, m) and callable(getattr(dialog, m)):
+                            save_method = getattr(dialog, m)
+                            break
+                    
+                    if save_method:
+                        save_method()
                 except Exception as e:
                     print(f"Error saving dialog {dialog}: {e}")
                     all_saved = False
+        except Exception as global_e:
+            print(f"Global error in save_all_dialogs: {global_e}")
+            all_saved = False
         
         return all_saved
+
+    def start_daily_job(self):
+        """Start background thread for daily data aggregation"""
+        thread = threading.Thread(target=self.daily_aggregation_job, daemon=True)
+        thread.start()
+
+    def daily_aggregation_job(self):
+        """Job that runs at midnight to process and log daily data summary"""
+        print("[SYSTEM] Background daily job started.")
+        while True:
+            try:
+                now = datetime.now()
+                target = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                wait_seconds = (target - now).total_seconds()
+                
+                while wait_seconds > 0:
+                    sleep_step = min(wait_seconds, 60)
+                    time.sleep(sleep_step)
+                    wait_seconds -= sleep_step
+                    try:
+                        if not self.winfo_exists(): return
+                    except:
+                        return
+
+                print("[SYSTEM] Executing daily data aggregation...")
+                self.execute_daily_report()
+                
+            except Exception as e:
+                print(f"[ERROR] Daily job error: {e}")
+                time.sleep(60)
+
+    def execute_daily_report(self):
+        """Gathers stats from the last 24h and logs to audit/files"""
+        from app.database.connection import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        cursor.execute("SELECT COUNT(*), SUM(total_price), AVG(total_price) FROM transactions WHERE DATE(date) = ?", (yesterday,))
+        t_row = cursor.fetchone()
+        t_count = t_row[0] or 0
+        t_sum = t_row[1] or 0
+        t_avg = t_row[2] or 0
+        
+        cursor.execute("SELECT COUNT(*), SUM(amount) FROM loan_payments WHERE DATE(payment_date) = ?", (yesterday,))
+        lp_row = cursor.fetchone()
+        lp_count = lp_row[0] or 0
+        lp_sum = lp_row[1] or 0
+        
+        cursor.execute("SELECT id, total_price, item_id FROM transactions WHERE DATE(date) = ? AND total_price > 5000000", (yesterday,))
+        anomalies = cursor.fetchall()
+        anomaly_count = len(anomalies)
+        
+        conn.close()
+        
+        summary = (
+            f"=== LAPORAN HARIAN ({yesterday}) ===\n"
+            f"Total Transaksi: {t_count}\n"
+            f"Nilai Transaksi: Rp {t_sum:,.0f}\n"
+            f"Rata-rata: Rp {t_avg:,.0f}\n"
+            f"Pembayaran Pinjaman: {lp_count} (Total Rp {lp_sum:,.0f})\n"
+            f"Anomali Terdeteksi: {anomaly_count}\n"
+        )
+        
+        log_audit(
+            "SYSTEM", "REPORT", "SUMMARY", 
+            None, None, None, None,
+            f"Daily Aggregation Completed for {yesterday}. Total Sales: Rp {t_sum:,.0f}", "INFO"
+        )
+        
+        log_dir = os.path.join(os.getcwd(), "logs", "daily_reports")
+        os.makedirs(log_dir, exist_ok=True)
+        report_file = os.path.join(log_dir, f"report_{yesterday}.txt")
+        
+        with open(report_file, "w", encoding='utf-8') as f:
+            f.write(summary)
+            if anomaly_count > 0:
+                f.write("\nDETEKSI ANOMALI (> Rp 5,000,000):\n")
+                for a in anomalies:
+                    f.write(f"- Transaksi ID {a[0]}: Rp {a[1]:,.0f}\n")
+        
+        print(f"[SYSTEM] Daily report generated: {report_file}")
 
     def perform_logout(self):
         """Actual logout logic"""

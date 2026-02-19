@@ -245,6 +245,11 @@ class StoreFrame(ctk.CTkFrame):
 
     def load_data(self, search_term: str = None):
         """Load items into table with pagination"""
+        try:
+            if not self.winfo_exists(): return
+        except:
+            return
+            
         # Clear existing rows
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
@@ -295,127 +300,130 @@ class StoreFrame(ctk.CTkFrame):
 
     def create_row(self, row_idx: int, item: dict):
         """Create a single data row with calculations"""
-        bg_color = "#1e293b" if row_idx % 2 == 0 else "#16213e"
-        is_inactive = not item.get('is_active', 1)
-        if is_inactive:
-            bg_color = "#2a1a1a" # Subtle dark red for inactive
+        try:
+            bg_color = "#1e293b" if row_idx % 2 == 0 else "#16213e"
+            is_inactive = not item.get('is_active', 1)
+            if is_inactive:
+                bg_color = "#2a1a1a" # Subtle dark red for inactive
+                
+            row_frame = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, height=45, corner_radius=5)
+            row_frame.grid(row=row_idx, column=0, columnspan=11, sticky="ew", pady=1)
+            row_frame.grid_propagate(False)
             
-        row_frame = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, height=45, corner_radius=5)
-        row_frame.grid(row=row_idx, column=0, columnspan=11, sticky="ew", pady=1)
-        row_frame.grid_propagate(False)
-        
-        # Apply same column configuration
-        for i, (_, min_width, weight) in enumerate(self.columns_config):
-            row_frame.grid_columnconfigure(i, minsize=min_width, weight=weight)
-        
-        # ID
-        ctk.CTkLabel(
-            row_frame, text=str(item['id']),
-            font=ctk.CTkFont(size=11), text_color="#888"
-        ).grid(row=0, column=0, padx=3, pady=8, sticky="w")
-        
-        # Kodebrg
-        ctk.CTkLabel(
-            row_frame, text=item.get('item_code', '-') or '-',
-            font=ctk.CTkFont(size=11), text_color="#00d4ff"
-        ).grid(row=0, column=1, padx=3, pady=8, sticky="w")
-        
-        # Name
-        ctk.CTkLabel(
-            row_frame, text=item['name'][:35],
-            font=ctk.CTkFont(size=11), text_color="#ffffff" if not is_inactive else "#888"
-        ).grid(row=0, column=2, padx=3, pady=8, sticky="w")
-        
-        # Stock
-        stock_color = "#ef4444" if item['stock'] <= 5 else "#4ade80"
-        ctk.CTkLabel(
-            row_frame, text=str(item['stock']),
-            font=ctk.CTkFont(size=11, weight="bold"), text_color=stock_color
-        ).grid(row=0, column=3, padx=3, pady=8, sticky="w")
-        
-        # Harga Pokok
-        ctk.CTkLabel(
-            row_frame, text=f"{item['buy_price']:,.0f}",
-            font=ctk.CTkFont(size=11), text_color="#cccccc"
-        ).grid(row=0, column=4, padx=3, pady=8, sticky="w")
-        
-        # Harga Jual
-        ctk.CTkLabel(
-            row_frame, text=f"{item['sell_price']:,.0f}",
-            font=ctk.CTkFont(size=11), text_color="#4ade80"
-        ).grid(row=0, column=5, padx=3, pady=8, sticky="w")
-        
-        # Laba
-        laba = item['sell_price'] - item['buy_price']
-        ctk.CTkLabel(
-            row_frame, text=f"{laba:,.0f}",
-            font=ctk.CTkFont(size=11), text_color="#f59e0b"
-        ).grid(row=0, column=6, padx=3, pady=8, sticky="w")
-        
-        # Status Barang
-        status_color = "#00d4ff" if item['status'] == 'Koperasi' else "#f59e0b"
-        ctk.CTkLabel(
-            row_frame, text=item['status'],
-            font=ctk.CTkFont(size=10), text_color=status_color
-        ).grid(row=0, column=7, padx=3, pady=8, sticky="w")
-        
-        # Status Aktif
-        aktif_text = "Ya" if not is_inactive else "Tidak"
-        aktif_color = "#4ade80" if not is_inactive else "#ef4444"
-        ctk.CTkLabel(
-            row_frame, text=aktif_text,
-            font=ctk.CTkFont(size=10, weight="bold"), text_color=aktif_color
-        ).grid(row=0, column=8, padx=3, pady=8, sticky="w")
-        
-        # Harga Aset (Jual * Stok)
-        asset_val = item['sell_price'] * item['stock']
-        ctk.CTkLabel(
-            row_frame, text=f"{asset_val:,.0f}",
-            font=ctk.CTkFont(size=11, weight="bold"), text_color="#8b5cf6"
-        ).grid(row=0, column=9, padx=3, pady=8, sticky="w")
-        
-        # Action buttons
-        action_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-        action_frame.grid(row=0, column=10, padx=3, pady=5, sticky="w")
-        
-        # Edit button
-        edit_btn = ctk.CTkButton(
-            action_frame, text="✏️", width=32, height=28,
-            fg_color="#3b82f6", hover_color="#2563eb",
-            corner_radius=5,
-            command=lambda i=item: self.open_edit_dialog(i)
-        )
-        edit_btn.pack(side="left", padx=1)
-        
-        # Sell button (Only if active)
-        sell_btn = ctk.CTkButton(
-            action_frame, text="🛒", width=32, height=28,
-            fg_color="#4ade80" if not is_inactive else "#374151", 
-            hover_color="#22c55e" if not is_inactive else "#374151",
-            state="normal" if not is_inactive else "disabled",
-            corner_radius=5,
-            command=lambda i=item: self.open_sell_dialog(i)
-        )
-        sell_btn.pack(side="left", padx=1)
-        
-        # Return button
-        return_btn = ctk.CTkButton(
-            action_frame, text="↩️", width=32, height=28,
-            fg_color="#f59e0b", hover_color="#d97706",
-            corner_radius=5,
-            command=lambda i=item: self.open_return_dialog(i)
-        )
-        return_btn.pack(side="left", padx=1)
-        
-        # Delete button
-        delete_btn = ctk.CTkButton(
-            action_frame, text="Hapus", width=45, height=28,
-            font=ctk.CTkFont(size=9),
-            fg_color="#ef4444", hover_color="#dc2626",
-            corner_radius=5,
-            command=lambda i=item: self.delete_item(i)
-        )
-        delete_btn.pack(side="left", padx=1)
+            # Apply same column configuration
+            for i, (_, min_width, weight) in enumerate(self.columns_config):
+                row_frame.grid_columnconfigure(i, minsize=min_width, weight=weight)
+            
+            # ID
+            ctk.CTkLabel(
+                row_frame, text=str(item['id']),
+                font=ctk.CTkFont(size=11), text_color="#888"
+            ).grid(row=0, column=0, padx=3, pady=8, sticky="w")
+            
+            # Kodebrg
+            ctk.CTkLabel(
+                row_frame, text=item.get('item_code', '-') or '-',
+                font=ctk.CTkFont(size=11), text_color="#00d4ff"
+            ).grid(row=0, column=1, padx=3, pady=8, sticky="w")
+            
+            # Name
+            ctk.CTkLabel(
+                row_frame, text=item['name'][:35],
+                font=ctk.CTkFont(size=11), text_color="#ffffff" if not is_inactive else "#888"
+            ).grid(row=0, column=2, padx=3, pady=8, sticky="w")
+            
+            # Stock
+            stock_color = "#ef4444" if item['stock'] <= 5 else "#4ade80"
+            ctk.CTkLabel(
+                row_frame, text=str(item['stock']),
+                font=ctk.CTkFont(size=11, weight="bold"), text_color=stock_color
+            ).grid(row=0, column=3, padx=3, pady=8, sticky="w")
+            
+            # Harga Pokok
+            ctk.CTkLabel(
+                row_frame, text=f"{item['buy_price']:,.0f}",
+                font=ctk.CTkFont(size=11), text_color="#cccccc"
+            ).grid(row=0, column=4, padx=3, pady=8, sticky="w")
+            
+            # Harga Jual
+            ctk.CTkLabel(
+                row_frame, text=f"{item['sell_price']:,.0f}",
+                font=ctk.CTkFont(size=11), text_color="#4ade80"
+            ).grid(row=0, column=5, padx=3, pady=8, sticky="w")
+            
+            # Laba
+            laba = item['sell_price'] - item['buy_price']
+            ctk.CTkLabel(
+                row_frame, text=f"{laba:,.0f}",
+                font=ctk.CTkFont(size=11), text_color="#f59e0b"
+            ).grid(row=0, column=6, padx=3, pady=8, sticky="w")
+            
+            # Status Barang
+            status_color = "#00d4ff" if item['status'] == 'Koperasi' else "#f59e0b"
+            ctk.CTkLabel(
+                row_frame, text=item['status'],
+                font=ctk.CTkFont(size=10), text_color=status_color
+            ).grid(row=0, column=7, padx=3, pady=8, sticky="w")
+            
+            # Status Aktif
+            aktif_text = "Ya" if not is_inactive else "Tidak"
+            aktif_color = "#4ade80" if not is_inactive else "#ef4444"
+            ctk.CTkLabel(
+                row_frame, text=aktif_text,
+                font=ctk.CTkFont(size=10, weight="bold"), text_color=aktif_color
+            ).grid(row=0, column=8, padx=3, pady=8, sticky="w")
+            
+            # Harga Aset (Jual * Stok)
+            asset_val = item['sell_price'] * item['stock']
+            ctk.CTkLabel(
+                row_frame, text=f"{asset_val:,.0f}",
+                font=ctk.CTkFont(size=11, weight="bold"), text_color="#8b5cf6"
+            ).grid(row=0, column=9, padx=3, pady=8, sticky="w")
+            
+            # Action buttons
+            action_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+            action_frame.grid(row=0, column=10, padx=3, pady=5, sticky="w")
+            
+            # Edit button
+            edit_btn = ctk.CTkButton(
+                action_frame, text="✏️", width=32, height=28,
+                fg_color="#3b82f6", hover_color="#2563eb",
+                corner_radius=5,
+                command=lambda i=item: self.open_edit_dialog(i)
+            )
+            edit_btn.pack(side="left", padx=1)
+            
+            # Sell button (Only if active)
+            sell_btn = ctk.CTkButton(
+                action_frame, text="🛒", width=32, height=28,
+                fg_color="#4ade80" if not is_inactive else "#374151", 
+                hover_color="#22c55e" if not is_inactive else "#374151",
+                state="normal" if not is_inactive else "disabled",
+                corner_radius=5,
+                command=lambda i=item: self.open_sell_dialog(i)
+            )
+            sell_btn.pack(side="left", padx=1)
+            
+            # Return button
+            return_btn = ctk.CTkButton(
+                action_frame, text="↩️", width=32, height=28,
+                fg_color="#f59e0b", hover_color="#d97706",
+                corner_radius=5,
+                command=lambda i=item: self.open_return_dialog(i)
+            )
+            return_btn.pack(side="left", padx=1)
+            
+            # Delete button
+            delete_btn = ctk.CTkButton(
+                action_frame, text="Hapus", width=45, height=28,
+                font=ctk.CTkFont(size=9),
+                fg_color="#ef4444", hover_color="#dc2626",
+                corner_radius=5,
+                command=lambda i=item: self.delete_item(i)
+            )
+            delete_btn.pack(side="left", padx=1)
+        except Exception as e:
+            print(f"ERROR rendering item row {row_idx}: {e}")
     
     def search_items(self):
         """Search items by name"""
@@ -562,7 +570,12 @@ class StoreFrame(ctk.CTkFrame):
                     del self.active_windows[window_key]
     
     def on_item_saved(self, item_data: dict, item_id: int = None):
-        """Handle item save (add or edit)"""
+        """Handle item save (add or edit) with stay or close option"""
+        try:
+            is_quitting = getattr(self.winfo_toplevel(), 'is_quitting', False)
+        except:
+            is_quitting = False
+
         if item_id:
             # Update existing
             self.warehouse.update_item(
@@ -576,7 +589,13 @@ class StoreFrame(ctk.CTkFrame):
                 item_code=item_data.get('item_code', ''),
                 is_active=item_data.get('is_active', 1)
             )
-            self.close_window(f"edit_item_{item_id}")
+            if not is_quitting:
+                self.load_data()
+            
+            if is_quitting:
+                self.close_window(f"edit_item_{item_id}")
+            elif messagebox.askyesno("Sukses", "Data barang berhasil diupdate.\n\nApakah Anda ingin menutup jendela ini?"):
+                self.close_window(f"edit_item_{item_id}")
         else:
             # Add new
             self.warehouse.add_item(
@@ -586,9 +605,13 @@ class StoreFrame(ctk.CTkFrame):
                 item_code=item_data.get('item_code', ''),
                 is_active=item_data.get('is_active', 1)
             )
-            self.close_window("add_item")
-        
-        self.load_data()
+            if not is_quitting:
+                self.load_data()
+            
+            if is_quitting:
+                self.close_window("add_item")
+            elif messagebox.askyesno("Sukses", "Barang berhasil ditambah.\n\nApakah Anda ingin menutup jendela ini?"):
+                self.close_window("add_item")
     
     def on_sale_complete(self, item_id: int, sale_data: dict = None):
         """Handle sale completion"""
@@ -1048,6 +1071,11 @@ class ItemDialog(ctk.CTkToplevel):
         if self.saving_in_progress:
             return
             
+        try:
+            is_quitting = getattr(self.winfo_toplevel(), 'is_quitting', False)
+        except:
+            is_quitting = False
+
         name = self.name_entry.get().strip()
         
         try:
@@ -1055,15 +1083,18 @@ class ItemDialog(ctk.CTkToplevel):
             buy_price = float(self.buy_price_entry.get() or 0)
             sell_price = float(self.sell_price_entry.get() or 0)
         except ValueError:
-            messagebox.showerror("Error", "Stok dan harga harus berupa angka!")
+            if not is_quitting:
+                messagebox.showerror("Error", "Stok dan harga harus berupa angka!")
             return
         
         if not name:
-            messagebox.showerror("Error", "Nama barang harus diisi!")
+            if not is_quitting:
+                messagebox.showerror("Error", "Nama barang harus diisi!")
             return
         
         if stock < 0 or buy_price < 0 or sell_price < 0:
-            messagebox.showerror("Error", "Nilai tidak boleh negatif!")
+            if not is_quitting:
+                messagebox.showerror("Error", "Nilai tidak boleh negatif!")
             return
         
         self.saving_in_progress = True
@@ -1524,4 +1555,3 @@ class ReturDialog(ctk.CTkToplevel):
             self.on_return(self.item['id'])
         else:
             messagebox.showerror("Error", result['message'])
-

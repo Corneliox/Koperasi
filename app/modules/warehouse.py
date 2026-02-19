@@ -271,6 +271,93 @@ class WarehouseManager:
             "remaining_stock": new_stock
         }
     
+    @handle_db_errors
+    def sell_items_bulk(self, items_to_sell: list, member_id: int, 
+                       payment_method: str = "Tunai") -> dict:
+        """
+        Sell multiple items in a single transaction process
+        :param items_to_sell: List of dicts {'id': item_id, 'qty': quantity}
+        :param member_id: ID of the member
+        :param payment_method: Payment method used
+        """
+        if not items_to_sell:
+            return {"success": False, "message": "Keranjang kosong"}
+            
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            total_invoice = 0
+            sold_items = []
+            
+            # 1. Validation phase
+            for entry in items_to_sell:
+                item_id = entry['id']
+                qty = entry['qty']
+                
+                cursor.execute("SELECT name, stock, sell_price, is_active FROM warehouse WHERE id = ?", (item_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return {"success": False, "message": f"Item ID {item_id} tidak ditemukan"}
+                
+                item = dict(row)
+                if not item.get('is_active', 1):
+                    return {"success": False, "message": f"Item '{item['name']}' sudah tidak aktif"}
+                
+                if item['stock'] < qty:
+                    return {"success": False, "message": f"Stok '{item['name']}' tidak cukup. Tersedia: {item['stock']}"}
+                
+                total_invoice += item['sell_price'] * qty
+                sold_items.append({
+                    'id': item_id,
+                    'name': item['name'],
+                    'qty': qty,
+                    'price': item['sell_price']
+                })
+            
+            # 2. Execution phase
+            for item in sold_items:
+                # Update stock
+                cursor.execute(
+                    "UPDATE warehouse SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (item['qty'], item['id'])
+                )
+                
+                # Create OUT mutation
+                cursor.execute(
+                    """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                       VALUES (?, 'OUT', ?, ?)""",
+                    (item['id'], item['qty'], f"Penjualan Bulk: {item['qty']} unit")
+                )
+                
+                # Create transaction record
+                cursor.execute(
+                    """INSERT INTO transactions 
+                       (item_id, member_id, qty, unit_price, total_price, category_type, payment_method)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (item['id'], member_id, item['qty'], item['price'], 
+                     item['qty'] * item['price'], self.category_context, payment_method)
+                )
+            
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "TRANSACTION", "CREATE",
+                "warehouse", None, None, None,
+                f"Jual Bulk ke Member ID {member_id}: {len(sold_items)} jenis barang, Total: Rp {total_invoice:,.0f} ({payment_method})", "INFO"
+            )
+            
+            return {
+                "success": True, 
+                "message": f"Penjualan {len(sold_items)} item berhasil!",
+                "total": total_invoice,
+                "items": sold_items
+            }
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+    
     def retur_barang(self, item_id: int, qty: int, reason: str) -> dict:
         """
         Return item - decreases stock (returns to supplier/disposal)
