@@ -198,10 +198,10 @@ class LoanManager:
         
         cursor.execute(
             """INSERT INTO loans 
-               (member_id, principal, amount, interest_rate, duration_months, 
+               (member_id, principal, interest_rate, duration_months, 
                 total_amount, monthly_payment, due_date, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (member_id, amount, amount, interest_rate, duration_months,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (member_id, amount, interest_rate, duration_months,
              total_amount, monthly_payment, due_date, notes)
         )
         loan_id = cursor.lastrowid
@@ -211,7 +211,7 @@ class LoanManager:
         log_audit(
             self.current_user, "LOAN", "CREATE",
             "loan", loan_id, None,
-            {"member_id": member_id, "amount": amount, "total": total_amount},
+            {"member_id": member_id, "principal": amount, "total": total_amount},
             f"Pinjaman baru untuk {member['name']}: Rp {amount:,.0f} "
             f"(Total: Rp {total_amount:,.0f}, Cicilan: Rp {monthly_payment:,.0f}/bln)", "INFO"
         )
@@ -242,10 +242,10 @@ class LoanManager:
         
         cursor.execute(
             """UPDATE loans 
-               SET principal=?, amount=?, interest_rate=?, duration_months=?, 
+               SET principal=?, interest_rate=?, duration_months=?, 
                    total_amount=?, monthly_payment=?, notes=?
                WHERE id=?""",
-            (amount, amount, interest_rate, duration_months,
+            (amount, interest_rate, duration_months,
              total_amount, monthly_payment, notes, loan_id)
         )
         conn.commit()

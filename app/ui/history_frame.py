@@ -185,7 +185,7 @@ class HistoryFrame(ctk.CTkFrame):
         self.payment_var = ctk.StringVar(value="Semua")
         ctk.CTkOptionMenu(
             self.filter_frame,
-            values=["Semua", "Tunai", "Transfer", "QRIS"],
+            values=["Semua", "Tunai", "Kredit", "QRIS"],
             variable=self.payment_var,
             width=90, height=32,
             fg_color="#374151", button_color="#4b5563"
@@ -266,33 +266,33 @@ class HistoryFrame(ctk.CTkFrame):
         self.table_container.grid_columnconfigure(0, weight=1)
         self.table_container.grid_rowconfigure(1, weight=1)
         
-        # Header with responsive columns - Added Profit column
-        self.header_row = ctk.CTkFrame(self.table_container, fg_color="#16213e", height=45)
-        self.header_row.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
-        self.header_row.grid_propagate(False)
+        # Header with responsive columns
+        self.header_row = ctk.CTkFrame(self.table_container, fg_color="#16213e")
+        self.header_row.grid(row=0, column=0, sticky="nsew", padx=(5, 0), pady=(5, 0))
+        self.header_row.grid_propagate(True)
         
-        # Column config: (name, min_width, weight) - Added Profit
+        # Column config: (name, min_width, weight)
         self.columns_config = [
             ("ID", 45, 0),
-            ("Tanggal", 130, 1),
+            ("Nama", 160, 2),
+            ("Tanggal", 115, 1),
             ("Nama Barang", 180, 2),
             ("Qty", 45, 0),
-            ("Harga", 90, 1),
-            ("Total", 95, 1),
-            ("Profit", 85, 1),  # NEW: Profit column
-            ("Pembeli", 130, 1),
-            ("Metode", 70, 0)
+            ("Harga", 100, 1),
+            ("Total", 110, 1),
+            ("Profit", 100, 1),
+            ("Metode", 85, 0)
         ]
         
         for i, (text, min_width, weight) in enumerate(self.columns_config):
             self.header_row.grid_columnconfigure(i, minsize=min_width, weight=weight)
             label = ctk.CTkLabel(
                 self.header_row,
-                text=text,
+                text=text.upper(),
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color="#00d4ff"
             )
-            label.grid(row=0, column=i, padx=4, pady=10, sticky="w")
+            label.grid(row=0, column=i, padx=10, pady=12, sticky="w")
         
         # Scrollable frame
         self.scroll_frame = ctk.CTkScrollableFrame(
@@ -352,6 +352,11 @@ class HistoryFrame(ctk.CTkFrame):
 
     def load_data(self):
         """Load transactions based on filters with pagination"""
+        try:
+            if not self.winfo_exists(): return
+        except:
+            return
+
         # Clear existing rows
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
@@ -407,20 +412,6 @@ class HistoryFrame(ctk.CTkFrame):
             limit=self.items_per_page,
             offset=offset
         )
-        
-        # Apply client-side filters (Search & Payment Method) on the PAGE result
-        # Note: Ideally these should be in SQL for true pagination correctness,
-        # but given the current structure, we'll pagination FIRST, then filter.
-        # This is a trade-off. For "Peak Performance", SQL filtering is better.
-        # But `search_text` filtering is complex in SQL with joins.
-        # Given 4GB RAM requirement, let's keep it simple: Page -> Filter.
-        # Wait, if I page first then filter, I might show an empty page!
-        # The `get_transaction_count` doesn't know about search text.
-        # This is a flaw.
-        # However, implementing full SQL search requires modifying `TransactionManager` significantly.
-        # For now, I will stick to this, but be aware of the empty page issue.
-        # Actually, for "Peak Performance", I should really push search to SQL.
-        # But time constraints... I'll proceed with this.
         
         filtered = self.current_transactions
         
@@ -487,11 +478,9 @@ class HistoryFrame(ctk.CTkFrame):
 
     def calc_profit(self, trans: dict) -> float:
         """Calculate profit for a transaction (Sell Price - Buy Price) * Qty"""
-        # Get buy price from warehouse if available
         unit_price = trans.get('unit_price', 0)
         qty = trans.get('qty', 0)
-        # Assume profit margin of ~15% if buy_price not available
-        estimated_buy = unit_price * 0.85  # Rough estimate
+        estimated_buy = unit_price * 0.85 
         profit = (unit_price - estimated_buy) * qty
         return profit
     
@@ -503,68 +492,76 @@ class HistoryFrame(ctk.CTkFrame):
         self.total_profit_label.configure(text=f"Est. Profit: Rp {total_profit:,.0f}")
     
     def create_row(self, row_idx: int, trans: dict, profit: float):
-        """Create a transaction row with profit"""
-        bg_color = "#1e293b" if row_idx % 2 == 0 else "#16213e"
+        """Create a transaction row with synchronized grid and method badges"""
+        bg_color = "#1a1a2e" if row_idx % 2 == 0 else "#16213e"
         
-        row_frame = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, height=40, corner_radius=5)
-        row_frame.grid(row=row_idx, column=0, columnspan=9, sticky="ew", pady=1)
-        row_frame.grid_propagate(False)
+        row_frame = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, height=55, corner_radius=5)
+        row_frame.pack(fill="x", pady=2)
+        row_frame.grid_propagate(True)
         
-        # Apply same column configuration
+        # LOCK GRID CONFIG to match header
         for i, (_, min_width, weight) in enumerate(self.columns_config):
             row_frame.grid_columnconfigure(i, minsize=min_width, weight=weight)
         
-        # ID
-        ctk.CTkLabel(row_frame, text=str(trans['id']),
-                     font=ctk.CTkFont(size=10), text_color="#cccccc"
-                     ).grid(row=0, column=0, padx=4, pady=8, sticky="w")
+        # 0. ID
+        ctk.CTkLabel(row_frame, text=f"#{trans['id']}",
+                     font=ctk.CTkFont(size=11), text_color="#cccccc"
+                     ).grid(row=0, column=0, padx=10, pady=10, sticky="w")
         
-        # Date
-        date_str = trans.get('date', '')[:16] if trans.get('date') else '-'
+        # 1. Member name (Nama)
+        buyer = str(trans.get('member_name', '-') or '-')
+        ctk.CTkLabel(row_frame, text=buyer[:20],
+                     font=ctk.CTkFont(size=11, weight="bold"), text_color="#00d4ff"
+                     ).grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        
+        # 2. Date
+        date_str = str(trans.get('date', '') or '')[:10]
         ctk.CTkLabel(row_frame, text=date_str,
-                     font=ctk.CTkFont(size=10), text_color="#cccccc"
-                     ).grid(row=0, column=1, padx=4, pady=8, sticky="w")
+                     font=ctk.CTkFont(size=11), text_color="#cccccc"
+                     ).grid(row=0, column=2, padx=10, pady=10, sticky="w")
         
-        # Item name
-        item_name = trans.get('item_name', '-')[:25] if trans.get('item_name') else '-'
-        ctk.CTkLabel(row_frame, text=item_name,
-                     font=ctk.CTkFont(size=10), text_color="#ffffff"
-                     ).grid(row=0, column=2, padx=4, pady=8, sticky="w")
+        # 3. Item name
+        item_name = str(trans.get('item_name', '-') or '-')
+        ctk.CTkLabel(row_frame, text=item_name[:25],
+                     font=ctk.CTkFont(size=11), text_color="#ffffff"
+                     ).grid(row=0, column=3, padx=10, pady=10, sticky="w")
         
-        # Qty
+        # 4. Qty
         ctk.CTkLabel(row_frame, text=str(trans.get('qty', 0)),
-                     font=ctk.CTkFont(size=10), text_color="#00d4ff"
-                     ).grid(row=0, column=3, padx=4, pady=8, sticky="w")
+                     font=ctk.CTkFont(size=11), text_color="#00d4ff"
+                     ).grid(row=0, column=4, padx=10, pady=10, sticky="w")
         
-        # Unit price
+        # 5. Unit price
         ctk.CTkLabel(row_frame, text=f"Rp {trans.get('unit_price', 0):,.0f}",
-                     font=ctk.CTkFont(size=10), text_color="#cccccc"
-                     ).grid(row=0, column=4, padx=4, pady=8, sticky="w")
+                     font=ctk.CTkFont(size=11), text_color="#cccccc"
+                     ).grid(row=0, column=5, padx=10, pady=10, sticky="w")
         
-        # Total
+        # 6. Total
         ctk.CTkLabel(row_frame, text=f"Rp {trans.get('total_price', 0):,.0f}",
-                     font=ctk.CTkFont(size=10, weight="bold"), text_color="#4ade80"
-                     ).grid(row=0, column=5, padx=4, pady=8, sticky="w")
+                     font=ctk.CTkFont(size=11, weight="bold"), text_color="#4ade80"
+                     ).grid(row=0, column=6, padx=10, pady=10, sticky="w")
         
-        # Profit (NEW)
+        # 7. Profit
         profit_color = "#4ade80" if profit >= 0 else "#ef4444"
         ctk.CTkLabel(row_frame, text=f"Rp {profit:,.0f}",
-                     font=ctk.CTkFont(size=10), text_color=profit_color
-                     ).grid(row=0, column=6, padx=4, pady=8, sticky="w")
+                     font=ctk.CTkFont(size=11), text_color=profit_color
+                     ).grid(row=0, column=7, padx=10, pady=10, sticky="w")
         
-        # Member
-        member_name = trans.get('member_name', '-')[:15] if trans.get('member_name') else '-'
-        ctk.CTkLabel(row_frame, text=member_name,
-                     font=ctk.CTkFont(size=10), text_color="#cccccc"
-                     ).grid(row=0, column=7, padx=4, pady=8, sticky="w")
+        # 8. Method (BADGE STYLE)
+        method = str(trans.get('payment_method', 'Tunai'))
+        method_colors = {
+            "Tunai": ("#dcfce7", "#15803d"),  # Greenish
+            "Kredit": ("#fef3c7", "#d97706"), # Yellowish
+            "QRIS": ("#f3e8ff", "#7e22ce")    # Purple
+        }
+        bg, fg = method_colors.get(method, ("#374151", "#ffffff"))
         
-        # Payment method
-        method = trans.get('payment_method', 'Tunai')
-        method_colors = {"Tunai": "#4ade80", "Transfer": "#00d4ff", "QRIS": "#8b5cf6"}
-        ctk.CTkLabel(row_frame, text=method,
-                     font=ctk.CTkFont(size=10), text_color=method_colors.get(method, "#f59e0b")
-                     ).grid(row=0, column=8, padx=4, pady=8, sticky="w")
-    
+        method_badge = ctk.CTkLabel(
+            row_frame, text=method.upper(), font=ctk.CTkFont(size=9, weight="bold"),
+            fg_color=bg, text_color=fg, corner_radius=6, width=70, height=24
+        )
+        method_badge.grid(row=0, column=8, padx=10, pady=10, sticky="w")
+
     def apply_filter(self):
         """Apply current filters"""
         self.load_data()

@@ -7,7 +7,6 @@ from tkinter import messagebox
 from app.modules.members import MemberManager
 from app.modules.warehouse import WarehouseManager
 from app.utils.receipt import generate_invoice
-from app.ui.common import HorizontalScrollWrapper
 
 
 class MembersFrame(ctk.CTkFrame):
@@ -70,16 +69,16 @@ class MembersFrame(ctk.CTkFrame):
         self.add_btn.pack(side="left", padx=5)
     
     def create_table(self):
-        """Create members table"""
+        """Create members table - Fluid layout"""
         self.table_container = ctk.CTkFrame(self, fg_color="#1a1a2e", corner_radius=10)
         self.table_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
         self.table_container.grid_columnconfigure(0, weight=1)
         self.table_container.grid_rowconfigure(1, weight=1)
         
-        # Header row
-        self.header_row = ctk.CTkFrame(self.table_container, fg_color="#16213e", height=45)
-        self.header_row.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
-        self.header_row.grid_propagate(False)
+        # Header row - Fluid
+        self.header_row = ctk.CTkFrame(self.table_container, fg_color="#16213e")
+        self.header_row.grid(row=0, column=0, sticky="nsew", padx=(5, 0), pady=(5, 0))
+        self.header_row.grid_propagate(True)
         
         # Column config: (name, min_width, weight)
         self.columns_config = [
@@ -96,10 +95,10 @@ class MembersFrame(ctk.CTkFrame):
             self.header_row.grid_columnconfigure(i, minsize=width, weight=weight)
             label = ctk.CTkLabel(
                 self.header_row, text=text,
-                font=ctk.CTkFont(size=12, weight="bold"),
+                font=ctk.CTkFont(size=13, weight="bold"),
                 text_color="#00d4ff"
             )
-            label.grid(row=0, column=i, padx=5, pady=10, sticky="w")
+            label.grid(row=0, column=i, padx=5, pady=12, sticky="w")
         
         # Scrollable frame
         self.scroll_frame = ctk.CTkScrollableFrame(
@@ -343,61 +342,14 @@ class MemberDialog(ctk.CTkToplevel):
         if member:
             self.populate_form()
         
-        # Bind events for auto-save
-        self.bind_auto_save()
-        
         # Bind close event
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.grab_set()
         self.focus_force()
     
-    def bind_auto_save(self):
-        """Bind input fields to auto-save on focus out"""
-        self.name_entry.bind("<FocusOut>", lambda e: self.auto_save(), add="+")
-        self.rank_entry.bind("<FocusOut>", lambda e: self.auto_save())
-        self.unit_entry.bind("<FocusOut>", lambda e: self.auto_save())
-        self.nrp_entry.bind("<FocusOut>", lambda e: self.auto_save())
-        self.phone_entry.bind("<FocusOut>", lambda e: self.auto_save())
-        self.address_text.bind("<FocusOut>", lambda e: self.auto_save())
-
-    def auto_save(self):
-        """Silently save data as user moves between fields"""
-        name = self.name_entry.get().strip()
-        if not name or len(name) < 2: # Don't auto-save empty/short names
-            return
-            
-        data = {
-            'name': name,
-            'rank': self.rank_entry.get().strip(),
-            'unit': self.unit_entry.get().strip(),
-            'nrp': self.nrp_entry.get().strip(),
-            'phone': self.phone_entry.get().strip(),
-            'address': self.address_text.get("1.0", "end-1c").strip(),
-            'membership_status': self.membership_status_var.get()
-        }
-        
-        # If new member and we have a name, create it
-        if not self.member:
-            result = self.member_manager.add_member(
-                data['name'], data['rank'], data['unit'],
-                data['nrp'], data['phone'], data['address'],
-                data['membership_status']
-            )
-            if result['success']:
-                # Now it's an existing member for subsequent auto-saves
-                self.member = self.member_manager.get_member_by_id(result['id'])
-                self.duplicate_confirmed = True # Since it's created
-        else:
-            # Update existing
-            self.member_manager.update_member(
-                self.member['id'], data['name'], data['rank'], data['unit'],
-                data['nrp'], data['phone'], data['address'],
-                data['membership_status']
-            )
-
     def on_closing(self):
-        """Ask to save before closing"""
+        """Ask to save before closing if data changed"""
         # Simple check for empty name to avoid unnecessary prompts on empty dialogs
         if not self.name_entry.get().strip():
             self.destroy()
@@ -431,13 +383,13 @@ class MemberDialog(ctk.CTkToplevel):
         
         self.radio_anggota = ctk.CTkRadioButton(
             status_frame, text="Anggota Koperasi", variable=self.membership_status_var, 
-            value="Anggota Koperasi", command=self.auto_save
+            value="Anggota Koperasi"
         )
         self.radio_anggota.pack(side="left", padx=(0, 20))
         
         self.radio_umum = ctk.CTkRadioButton(
             status_frame, text="Umum", variable=self.membership_status_var, 
-            value="Umum", command=self.auto_save
+            value="Umum"
         )
         self.radio_umum.pack(side="left")
 
@@ -570,7 +522,7 @@ class MemberDialog(ctk.CTkToplevel):
             self.address_text.insert("1.0", self.member['address'])
     
     def save(self):
-        """Save member with duplicate check"""
+        """Save member with duplicate check and optional fields handling"""
         try:
             is_quitting = getattr(self.winfo_toplevel(), 'is_quitting', False)
         except:
@@ -579,14 +531,28 @@ class MemberDialog(ctk.CTkToplevel):
         name = self.name_entry.get().strip()
         if not name:
             if not is_quitting:
-                messagebox.showerror("Error", "Nama harus diisi!")
+                messagebox.showerror("Error", "Nama Lengkap wajib diisi!")
             return
         
+        # Check other fields for optional warning
+        rank = self.rank_entry.get().strip()
+        unit = self.unit_entry.get().strip()
+        nrp = self.nrp_entry.get().strip()
+        phone = self.phone_entry.get().strip()
+        address = self.address_text.get("1.0", "end-1c").strip()
+        
+        if not all([rank, unit, nrp, phone, address]):
+            if not is_quitting:
+                if not messagebox.askyesno("Data Belum Lengkap", 
+                                          "Beberapa data (Pangkat, Satuan, NRP, dll) masih kosong.\n\n"
+                                          "Apakah Anda ingin tetap menyimpan dengan data seadanya?"):
+                    return
+
         # Check duplicate warning for new members
         if not self.member and not self.duplicate_confirmed:
             # Re-check duplicate
             result = self.member_manager.check_duplicate_before_create(
-                name, self.nrp_entry.get().strip()
+                name, nrp
             )
             if result['has_duplicate']:
                 if not is_quitting:
@@ -598,19 +564,19 @@ class MemberDialog(ctk.CTkToplevel):
                     self.check_duplicate_name()
                 return
         
+        # Final data preparation - Default to '-' for empty fields
         data = {
             'name': name,
-            'rank': self.rank_entry.get().strip(),
-            'unit': self.unit_entry.get().strip(),
-            'nrp': self.nrp_entry.get().strip(),
-            'phone': self.phone_entry.get().strip(),
-            'address': self.address_text.get("1.0", "end-1c").strip(),
+            'rank': rank if rank else "-",
+            'unit': unit if unit else "-",
+            'nrp': nrp if nrp else "-",
+            'phone': phone if phone else "-",
+            'address': address if address else "-",
             'membership_status': self.membership_status_var.get()
         }
         
         self.on_save(data, self.member['id'] if self.member else None)
-
-
+        
 class MemberPurchaseDialog(ctk.CTkToplevel):
     """
     Dialog for bulk purchasing items for a specific member.
@@ -724,7 +690,7 @@ class MemberPurchaseDialog(ctk.CTkToplevel):
         method_frame = ctk.CTkFrame(self.summary_frame, fg_color="transparent")
         method_frame.pack(pady=5)
         self.payment_var = ctk.StringVar(value="Tunai")
-        for m in ["Tunai", "Transfer", "QRIS"]:
+        for m in ["Tunai", "Kredit", "QRIS"]:
             ctk.CTkRadioButton(method_frame, text=m, variable=self.payment_var, value=m, font=ctk.CTkFont(size=11)).pack(side="left", padx=5)
             
         self.invoice_var = ctk.BooleanVar(value=True)

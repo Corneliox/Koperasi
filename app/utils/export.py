@@ -44,6 +44,7 @@ def export_to_excel(data: list, columns: dict, filename: str,
         
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
+        last_row = len(df) + 1
         
         # Header format
         header_format = workbook.add_format({
@@ -68,11 +69,31 @@ def export_to_excel(data: list, columns: dict, filename: str,
             'num_format': '#,##0',
             'align': 'right'
         })
+
+        # Total format
+        total_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#E2EFDA',
+            'border': 1,
+            'num_format': '#,##0',
+            'align': 'right'
+        })
         
         # Apply header format
         for col_num, header in enumerate(df.columns):
             worksheet.write(0, col_num, header, header_format)
             worksheet.set_column(col_num, col_num, 20)
+            
+            # Add TOTAL row at the end if it's a numeric column
+            col_name = df.columns[col_num]
+            if col_num == 0:
+                worksheet.write(last_row, col_num, "TOTAL", total_format)
+            elif col_name in ['Jumlah', 'Total', 'Profit', 'Laba', 'Harga aset']:
+                sum_formula = f"=SUM({chr(65+col_num)}2:{chr(65+col_num)}{last_row})"
+                worksheet.write_formula(last_row, col_num, sum_formula, total_format)
+            else:
+                # Just draw the border for empty total cells
+                worksheet.write(last_row, col_num, "", total_format)
         
         # Freeze header row
         worksheet.freeze_panes(1, 0)
@@ -82,18 +103,29 @@ def export_to_excel(data: list, columns: dict, filename: str,
 
 def export_transactions_excel(transactions: list, filename: str = "Laporan_Transaksi",
                               output_dir: str = None) -> str:
-    """Export transactions to Excel"""
+    """Export transactions to Excel with ID, Nama, Tanggal order and Profit"""
+    processed = []
+    for t in transactions:
+        row = dict(t)
+        # Calculate profit: (Sell - Est Buy) * Qty
+        unit_price = t.get('unit_price', 0)
+        qty = t.get('qty', 0)
+        estimated_buy = unit_price * 0.85
+        row['profit'] = (unit_price - estimated_buy) * qty
+        processed.append(row)
+
     columns = {
+        'id': 'ID',
+        'member_name': 'Nama',
         'date': 'Tanggal',
         'item_name': 'Nama Barang',
         'qty': 'Jumlah',
         'unit_price': 'Harga Satuan',
         'total_price': 'Total',
-        'member_name': 'Pembeli',
-        'member_nrp': 'NRP',
+        'profit': 'Profit',
         'payment_method': 'Metode Bayar'
     }
-    return export_to_excel(transactions, columns, filename, "Transaksi", output_dir)
+    return export_to_excel(processed, columns, filename, "Transaksi", output_dir)
 
 
 def export_inventory_excel(items: list, filename: str = "Laporan_Inventaris",

@@ -2,8 +2,8 @@
 ; Professional Installer with System Audit Wizard
 
 #define MyAppName "Koperasi Brimob"
-#define MyAppVersion "1.7"
-#define MyAppPublisher "Emergent"
+#define MyAppVersion "4.0"
+#define MyAppPublisher "Cornelio"
 #define MyAppURL "https://www.example.com/"
 #define MyAppExeName "KoperasiBrimob.exe"
 
