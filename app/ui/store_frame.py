@@ -224,6 +224,13 @@ class StoreFrame(ctk.CTkFrame):
         
         items = self.warehouse.get_all_items(search_term)
         
+        if items is None:
+            ctk.CTkLabel(
+                self.scroll_frame, text="Terjadi kesalahan saat memuat data",
+                font=ctk.CTkFont(size=14), text_color="#ef4444"
+            ).pack(pady=50)
+            return
+
         # Handle sorting
         items.sort(key=lambda x: x.get(self.sort_column) if x.get(self.sort_column) is not None else "", 
                   reverse=self.sort_reverse)

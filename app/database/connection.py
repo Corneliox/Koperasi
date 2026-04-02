@@ -73,7 +73,7 @@ def init_database():
             stock INTEGER DEFAULT 0,
             buy_price REAL DEFAULT 0,
             sell_price REAL DEFAULT 0,
-            status TEXT DEFAULT 'Koperasi' CHECK(status IN ('Koperasi', 'Konsinyasi')),
+            status TEXT DEFAULT 'Koperasi' CHECK(status IN ('Koperasi', 'Titipan')),
             is_active INTEGER DEFAULT 1,
             description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

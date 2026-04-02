@@ -31,8 +31,8 @@ class WarehouseManager:
         params = [self.category_context]
         
         if search_term:
-            query += " AND name LIKE ?"
-            params.append(f"%{search_term}%")
+            query += " AND (name LIKE ? OR item_code LIKE ?)"
+            params.extend([f"%{search_term}%", f"%{search_term}%"])
             
         # Validation for sort_column to prevent SQL injection
         allowed_columns = ["id", "item_code", "name", "stock", "buy_price", "sell_price", "status", "is_active"]
@@ -54,6 +54,7 @@ class WarehouseManager:
         conn.close()
         return items
 
+    @handle_db_errors
     def get_items_count(self, search_term: str = None) -> int:
         """Get total count of items matching search criteria"""
         conn = get_connection()
@@ -63,14 +64,15 @@ class WarehouseManager:
         params = [self.category_context]
         
         if search_term:
-            query += " AND name LIKE ?"
-            params.append(f"%{search_term}%")
+            query += " AND (name LIKE ? OR item_code LIKE ?)"
+            params.extend([f"%{search_term}%", f"%{search_term}%"])
             
         cursor.execute(query, params)
         count = cursor.fetchone()[0]
         conn.close()
         return count
     
+    @handle_db_errors
     def get_item_by_id(self, item_id: int) -> dict:
         """Get single item by ID"""
         conn = get_connection()
@@ -86,21 +88,21 @@ class WarehouseManager:
     @handle_db_errors
     def add_item(self, name: str, stock: int, buy_price: float, sell_price: float,
                  status: str = "Koperasi", description: str = "", 
-                 item_code: str = "", is_active: int = 1) -> int:
+                 item_code: str = "", is_active: int = 1) -> dict:
         """
         Add new item to warehouse
         Auto-creates 'IN' mutation record
         """
         # Validation
         if not name:
-            return None # Or raise a custom exception if preferred
+            return {"success": False, "message": "Nama barang wajib diisi"}
             
         try:
             stock = int(stock) if stock is not None else 0
             buy_price = float(buy_price) if buy_price is not None else 0.0
             sell_price = float(sell_price) if sell_price is not None else 0.0
         except (ValueError, TypeError):
-            return None
+            return {"success": False, "message": "Stok dan harga harus berupa angka"}
 
         conn = get_connection()
         try:
@@ -133,20 +135,49 @@ class WarehouseManager:
                 f"Menambah barang: {name} ({item_code}), Stok: {stock}", "INFO"
             )
             
-            return item_id
+            return {"success": True, "message": "Barang berhasil ditambahkan", "id": item_id}
         finally:
             conn.close()
+
+    def create_item(self, data: dict) -> dict:
+        """Alias for add_item to match UI expectations and handle dict input"""
+        return self.add_item(
+            name=data.get('name'),
+            stock=data.get('stock', 0),
+            buy_price=data.get('buy_price', 0),
+            sell_price=data.get('sell_price', 0),
+            status=data.get('status', 'Koperasi'),
+            description=data.get('description', ''),
+            item_code=data.get('item_code', ''),
+            is_active=data.get('is_active', 1)
+        )
     
-    def update_item(self, item_id: int, name: str, stock: int, buy_price: float,
-                    sell_price: float, status: str, description: str,
-                    item_code: str = "", is_active: int = 1) -> bool:
+    @handle_db_errors
+    def update_item(self, item_id: int, name_or_data, stock: int = None, buy_price: float = None,
+                    sell_price: float = None, status: str = None, description: str = None,
+                    item_code: str = "", is_active: int = 1) -> dict:
         """
         Update item and create mutation if stock changed
+        Supports both positional arguments and dictionary input
         """
+        # Handle dictionary input if passed as second argument
+        if isinstance(name_or_data, dict):
+            data = name_or_data
+            name = data.get('name')
+            stock = data.get('stock')
+            buy_price = data.get('buy_price')
+            sell_price = data.get('sell_price')
+            status = data.get('status')
+            description = data.get('description', '')
+            item_code = data.get('item_code', '')
+            is_active = data.get('is_active', 1)
+        else:
+            name = name_or_data
+
         # Get old stock first
         old_item = self.get_item_by_id(item_id)
         if not old_item:
-            return False
+            return {"success": False, "message": "Barang tidak ditemukan"}
         
         old_stock = old_item['stock']
         stock_diff = stock - old_stock
@@ -185,13 +216,14 @@ class WarehouseManager:
             f"Edit barang ID {item_id}: {name}, Stok: {old_stock} -> {stock}, Aktif: {is_active}", "INFO"
         )
         
-        return True
+        return {"success": True, "message": "Data barang berhasil diupdate"}
     
-    def delete_item(self, item_id: int) -> bool:
+    @handle_db_errors
+    def delete_item(self, item_id: int) -> dict:
         """Delete item from warehouse"""
         item = self.get_item_by_id(item_id)
         if not item:
-            return False
+            return {"success": False, "message": "Barang tidak ditemukan"}
         
         conn = get_connection()
         cursor = conn.cursor()
@@ -208,14 +240,18 @@ class WarehouseManager:
             f"Hapus barang: {item['name']} (ID: {item_id})", "WARNING"
         )
         
-        return True
+        return {"success": True, "message": "Barang berhasil dihapus"}
     
     @handle_db_errors
     def sell_item(self, item_id: int, qty: int, member_id: int = None,
-                  payment_method: str = "Tunai") -> dict:
+                  payment_method: str = "Tunai", current_user: str = None) -> dict:
         """
         Sell item - decreases stock and creates transaction
         """
+        # Update current user if provided
+        if current_user:
+            self.current_user = current_user
+
         item = self.get_item_by_id(item_id)
         if not item:
             return {"success": False, "message": "Barang tidak ditemukan"}
@@ -253,6 +289,7 @@ class WarehouseManager:
             (item_id, member_id, qty, item['sell_price'], total_price, 
              self.category_context, payment_method)
         )
+        transaction_id = cursor.lastrowid
         
         conn.commit()
         conn.close()
@@ -268,7 +305,8 @@ class WarehouseManager:
             "success": True, 
             "message": "Penjualan berhasil",
             "total": total_price,
-            "remaining_stock": new_stock
+            "remaining_stock": new_stock,
+            "transaction_id": transaction_id
         }
     
     @handle_db_errors
@@ -288,6 +326,7 @@ class WarehouseManager:
             cursor = conn.cursor()
             total_invoice = 0
             sold_items = []
+            transaction_ids = []
             
             # 1. Validation phase
             for entry in items_to_sell:
@@ -337,6 +376,7 @@ class WarehouseManager:
                     (item['id'], member_id, item['qty'], item['price'], 
                      item['qty'] * item['price'], self.category_context, payment_method)
                 )
+                transaction_ids.append(cursor.lastrowid)
             
             conn.commit()
             
@@ -350,7 +390,8 @@ class WarehouseManager:
                 "success": True, 
                 "message": f"Penjualan {len(sold_items)} item berhasil!",
                 "total": total_invoice,
-                "items": sold_items
+                "items": sold_items,
+                "transaction_ids": transaction_ids
             }
         except Exception as e:
             conn.rollback()
@@ -403,6 +444,10 @@ class WarehouseManager:
             "message": "Retur berhasil dicatat",
             "remaining_stock": new_stock
         }
+    
+    def return_item(self, item_id: int, qty: int, reason: str) -> dict:
+        """Alias for retur_barang to match UI expectations"""
+        return self.retur_barang(item_id, qty, reason)
     
     def add_stock(self, item_id: int, qty: int, description: str = "") -> dict:
         """Add stock to existing item"""
@@ -480,6 +525,7 @@ class WarehouseManager:
         conn.close()
         return items
     
+    @handle_db_errors
     def get_statistics(self) -> dict:
         """Get warehouse statistics for dashboard"""
         conn = get_connection()
