@@ -210,6 +210,14 @@ def init_database():
         )
     """)
     
+    # Settings table for app version and other configs
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    
     # Create indexes for better performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_warehouse_category ON warehouse(category_type)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_type)")

@@ -11,18 +11,21 @@
 AppId={{C62B6D4F-8F32-4161-9C55-789012345678}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DisableDirPage=no
 DisableProgramGroupPage=no
-UsePreviousAppDir=no
+UsePreviousAppDir=yes
 PrivilegesRequired=admin
 OutputDir=.
 OutputBaseFilename=KoperasiBrimob_Setup_v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=yes
+RestartApplications=yes
 MinVersion=6.1
 
 [Languages]

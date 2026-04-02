@@ -103,6 +103,8 @@ from app.ui.admin_panel import AuditLogViewer, DangerResetModal
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+APP_VERSION = "4.0"
+
 
 class KoperasiBrimobApp(ctk.CTk):
     """Main Application Window"""
@@ -127,8 +129,11 @@ class KoperasiBrimobApp(ctk.CTk):
         # Initialize database
         init_database()
         
+        # Check for updates and show notes
+        self.after(1000, self.check_version_update)
+
         # Window configuration
-        self.title("Koperasi Brimob - Sistem Manajemen")
+        self.title(f"Koperasi Brimob v{APP_VERSION}")
         
         # Set icon
         if os.path.exists("icon.ico"):
@@ -363,6 +368,48 @@ class KoperasiBrimobApp(ctk.CTk):
             f"User {self.current_user} logout", "INFO"
         )
         self.show_login()
+
+    def check_version_update(self):
+        """Compare current version with DB to show update notification"""
+        try:
+            from app.database.connection import get_connection
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            # Check if settings table exists (it should now)
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
+            if not cursor.fetchone():
+                conn.close()
+                return
+
+            cursor.execute("SELECT value FROM settings WHERE key = 'version'")
+            row = cursor.fetchone()
+            last_version = row[0] if row else "0.0"
+            
+            if last_version != APP_VERSION:
+                # Show update popup
+                self.show_update_notes(last_version, APP_VERSION)
+                
+                # Update version in DB
+                cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('version', ?)", (APP_VERSION,))
+                conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Version check failed: {e}")
+
+    def show_update_notes(self, old_ver, new_ver):
+        """Show what's new in this version"""
+        notes = (
+            f"🚀 BERHASIL DIPERBARUI KE VERSI {new_ver}!\n\n"
+            "Apa yang baru di versi ini:\n"
+            "✅ Perbaikan Bug Logika Gudang & Sinkronisasi DB\n"
+            "✅ Perbaikan Status 'Titipan' agar tersimpan di Database\n"
+            "✅ Sinkronisasi ID Transaksi untuk Cetak Struk\n"
+            "✅ Kompatibilitas Windows 7 (Peringatan Anggota)\n"
+            "✅ Sistem Update Otomatis melalui Installer\n\n"
+            "Terima kasih telah menggunakan Koperasi Brimob."
+        )
+        tkinter.messagebox.showinfo(f"Update Berhasil (v{old_ver} -> v{new_ver})", notes)
 
     def show_login(self):
         """Show login frame"""
