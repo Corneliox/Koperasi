@@ -556,13 +556,15 @@ class MemberDialog(ctk.CTkToplevel):
             )
             if result['has_duplicate']:
                 if not is_quitting:
-                    messagebox.showwarning(
-                        "Peringatan", 
-                        "Terdapat anggota dengan nama serupa.\n\n"
-                        "Klik 'Tetap Buat Baru' pada peringatan jika ingin melanjutkan."
-                    )
-                    self.check_duplicate_name()
-                return
+                    if messagebox.askyesno(
+                        "Peringatan Duplikat", 
+                        "Terdapat anggota dengan nama serupa di database.\n\n"
+                        "Apakah Anda yakin ingin tetap membuat anggota baru?"
+                    ):
+                        self.duplicate_confirmed = True
+                    else:
+                        self.check_duplicate_name()
+                        return
         
         # Final data preparation - Default to '-' for empty fields
         data = {
