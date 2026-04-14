@@ -288,14 +288,16 @@ class LoansFrame(ctk.CTkFrame):
         except:
             is_quitting = False
 
-        if not is_quitting:
-            self.load_data()
-            
         if is_quitting:
             self.close_window("add_loan")
-        elif messagebox.askyesno("Sukses", "Pinjaman berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
+            self.load_data()
+            return
+
+        if messagebox.askyesno("Sukses", "Pinjaman berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
             self.close_window("add_loan")
-    
+            self.after(100, self.load_data)
+        else:
+            self.load_data()    
     def on_payment_saved(self, loan_id: int):
         """Handle payment save with stay or close option"""
         try:
@@ -303,14 +305,19 @@ class LoansFrame(ctk.CTkFrame):
         except:
             is_quitting = False
 
-        if not is_quitting:
-            self.load_data()
-            
-        if is_quitting:
-            self.close_window(f"payment_{loan_id}")
-        elif messagebox.askyesno("Sukses", "Pembayaran berhasil dicatat.\n\nApakah Anda ingin menutup jendela ini?"):
-            self.close_window(f"payment_{loan_id}")
+        # Determine registry key
+        key = f"payment_{loan_id}"
 
+        if is_quitting:
+            self.close_window(key)
+            self.load_data()
+            return
+
+        if messagebox.askyesno("Sukses", "Pembayaran berhasil dicatat.\n\nApakah Anda ingin menutup jendela ini?"):
+            self.close_window(key)
+            self.after(100, self.load_data)
+        else:
+            self.load_data()
 
 class LoanSimulationDialog(ctk.CTkToplevel):
     """Loan simulation dialog - Pre-calculate before creating"""
@@ -690,8 +697,6 @@ class NewLoanDialog(ctk.CTkToplevel):
         result = self.loan_manager.create_loan(member_id, amount, interest, duration, notes)
         
         if result['success']:
-            if not is_quitting:
-                messagebox.showinfo("Sukses", f"Pinjaman berhasil dibuat!\n\n{result.get('message', '')}")
             self.on_save({'loan_id': result.get('loan_id')})
         else:
             if not is_quitting:
@@ -864,8 +869,6 @@ class LoanPaymentDialog(ctk.CTkToplevel):
         result = self.loan_manager.record_payment(self.loan['id'], amount, method, notes)
         
         if result['success']:
-            if not is_quitting:
-                messagebox.showinfo("Sukses", result['message'])
             self.on_save(self.loan['id'])
         else:
             if not is_quitting:

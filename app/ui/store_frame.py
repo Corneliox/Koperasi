@@ -545,16 +545,20 @@ class StoreFrame(ctk.CTkFrame):
         except:
             is_quitting = False
 
-        if not is_quitting:
-            self.load_data()
-            
         # Determine registry key
         key = f"edit_{item_id}" if item_id else "add_item"
-        
+
         if is_quitting:
             self.close_window(key)
-        elif messagebox.askyesno("Sukses", "Data barang berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
+            self.load_data()
+            return
+            
+        if messagebox.askyesno("Sukses", "Data barang berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
             self.close_window(key)
+            # Use after to refresh parent UI without blocking for Win7 stability
+            self.after(100, self.load_data)
+        else:
+            self.load_data()
             
     def on_transaction_saved(self, item_id: int, type: str = 'sell'):
         """Handle save callback from SellDialog or ReturDialog"""
@@ -563,16 +567,19 @@ class StoreFrame(ctk.CTkFrame):
         except:
             is_quitting = False
 
-        if not is_quitting:
-            self.load_data()
-            
         # Determine registry key
         key = f"{type}_{item_id}"
-        
+
         if is_quitting:
             self.close_window(key)
-        elif messagebox.askyesno("Sukses", "Transaksi berhasil dicatat.\n\nApakah Anda ingin menutup jendela ini?"):
+            self.load_data()
+            return
+            
+        if messagebox.askyesno("Sukses", "Transaksi berhasil dicatat.\n\nApakah Anda ingin menutup jendela ini?"):
             self.close_window(key)
+            self.after(100, self.load_data)
+        else:
+            self.load_data()
 
 
 class ImportPreviewDialog(ctk.CTkToplevel):
@@ -824,8 +831,6 @@ class ItemDialog(ctk.CTkToplevel):
             result = self.warehouse.create_item(data)
             
         if result['success']:
-            if not is_quitting:
-                messagebox.showinfo("Sukses", result['message'])
             self.on_save(data, self.item['id'] if self.item else None)
         else:
             if not is_quitting:
@@ -1070,13 +1075,10 @@ class SellDialog(ctk.CTkToplevel):
                         'payment_method': method,
                         'cashier': self.current_user
                     }
-                    filepath = generate_receipt(receipt_data)
-                    messagebox.showinfo("Sukses", f"Transaksi Berhasil!\nStruk disimpan di: {filepath}")
+                    generate_receipt(receipt_data)
                 except Exception as e:
                     messagebox.showwarning("Peringatan", f"Transaksi berhasil tapi gagal cetak struk: {e}")
-            else:
-                messagebox.showinfo("Sukses", result['message'])
-                
+            
             self.on_save(self.item['id'], 'sell')
         else:
             messagebox.showerror("Error", result['message'])
@@ -1154,7 +1156,6 @@ class ReturDialog(ctk.CTkToplevel):
         result = self.warehouse.return_item(self.item['id'], qty, reason)
         
         if result['success']:
-            messagebox.showinfo("Sukses", result['message'])
             self.on_save(self.item['id'], 'return')
         else:
             messagebox.showerror("Error", result['message'])

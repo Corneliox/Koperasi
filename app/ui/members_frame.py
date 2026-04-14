@@ -258,13 +258,16 @@ class MembersFrame(ctk.CTkFrame):
                 data['nrp'], data['phone'], data['address'], data['membership_status']
             )
             if result['success']:
-                if not is_quitting:
-                    self.load_data()
-                
                 if is_quitting:
                     self.close_window(f"edit_member_{member_id}")
-                elif messagebox.askyesno("Sukses", "Data anggota berhasil diupdate.\n\nApakah Anda ingin menutup jendela ini?"):
+                    self.load_data()
+                    return
+
+                if messagebox.askyesno("Sukses", "Data anggota berhasil diupdate.\n\nApakah Anda ingin menutup jendela ini?"):
                     self.close_window(f"edit_member_{member_id}")
+                    self.after(100, self.load_data)
+                else:
+                    self.load_data()
             else:
                 if not is_quitting:
                     messagebox.showerror("Error", result['message'])
@@ -274,13 +277,16 @@ class MembersFrame(ctk.CTkFrame):
                 data['nrp'], data['phone'], data['address'], data['membership_status']
             )
             if result['success']:
-                if not is_quitting:
-                    self.load_data()
-                
                 if is_quitting:
                     self.close_window("add_member")
-                elif messagebox.askyesno("Sukses", "Data berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
+                    self.load_data()
+                    return
+
+                if messagebox.askyesno("Sukses", "Data berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
                     self.close_window("add_member")
+                    self.after(100, self.load_data)
+                else:
+                    self.load_data()
             else:
                 if not is_quitting:
                     messagebox.showerror("Error", result['message'])
