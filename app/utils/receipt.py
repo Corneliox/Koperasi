@@ -36,7 +36,7 @@ def generate_receipt(sale_data: dict, output_dir: str = None) -> str:
     
     # Header
     pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 8, 'KOPERASI BRIMOB', align='C', new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, 'KOPERASI SIMPAN PINJAM', align='C', new_x="LMARGIN", new_y="NEXT")
     pdf.set_font('Helvetica', '', 10)
     pdf.cell(0, 5, 'Struk Penjualan', align='C', new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
@@ -135,8 +135,8 @@ def generate_thermal_receipt(sale_data: dict, output_dir: str = None) -> str:
     # Build receipt text (32 char width for 58mm paper)
     lines = []
     lines.append("=" * 32)
-    lines.append("     KOPERASI BRIMOB")
-    lines.append("    Struk Penjualan")
+    lines.append("   KOPERASI SIMPAN PINJAM")
+    lines.append("      Struk Penjualan")
     lines.append("=" * 32)
     lines.append(f"No: {receipt_no}")
     lines.append(f"Tgl: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -210,7 +210,7 @@ def generate_invoice(transaction_list: list, member_info: dict = None,
     pdf.cell(0, 12, 'INVOICE', align='C', new_x="LMARGIN", new_y="NEXT")
     
     pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 8, 'KOPERASI BRIMOB', align='C', new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, 'KOPERASI SIMPAN PINJAM', align='C', new_x="LMARGIN", new_y="NEXT")
     pdf.ln(5)
     
     # Invoice info
@@ -269,7 +269,7 @@ def generate_invoice(transaction_list: list, member_info: dict = None,
     
     # Footer
     pdf.set_font('Helvetica', 'I', 9)
-    pdf.cell(0, 6, 'Terima kasih atas kepercayaan Anda kepada Koperasi Brimob', align='C')
+    pdf.cell(0, 6, 'Terima kasih atas kepercayaan Anda kepada Koperasi', align='C')
     
     # Save
     filename = f"{invoice_no}.pdf"

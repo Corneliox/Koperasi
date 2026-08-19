@@ -103,7 +103,7 @@ from app.ui.admin_panel import AuditLogViewer, DangerResetModal
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-APP_VERSION = "4.2"
+APP_VERSION = "4.3"
 
 
 class KoperasiBrimobApp(ctk.CTk):
@@ -133,7 +133,7 @@ class KoperasiBrimobApp(ctk.CTk):
         self.after(1000, self.check_version_update)
 
         # Window configuration
-        self.title(f"Koperasi Brimob v{APP_VERSION}")
+        self.title(f"Sistem Koperasi v{APP_VERSION}")
         
         # Set icon
         if os.path.exists("icon.ico"):
@@ -401,13 +401,13 @@ class KoperasiBrimobApp(ctk.CTk):
         """Show what's new in this version"""
         notes = (
             f"🚀 BERHASIL DIPERBARUI KE VERSI {new_ver}!\n\n"
-            "Apa yang baru di versi 4.2 (Khusus Windows 10 & 11 64-bit):\n"
+            "Apa yang baru di versi 4.3:\n"
+            "✅ Sistem Autentikasi Baru: Pendaftaran akun lokal mandiri dengan enkripsi password\n"
+            "✅ Operasi 100% Offline/Lokal: Database mandiri tanpa ketergantungan jaringan eksternal\n"
+            "✅ Antarmuka Netral & Modern: Sistem Koperasi Simpan Pinjam & Manajemen Kasir\n"
             "✅ Stabilitas Penuh: Mitigasi crash saat input data & validasi angka cerdas\n"
-            "✅ Konkurensi Database: Mode SQLite WAL untuk transaksi multi-thread lancar\n"
-            "✅ Perbaikan Transaksi & Struk: Format cetak POS lengkap & sinkron\n"
-            "✅ Akurasi Finansial: Pemisahan pokok & bunga pinjaman pada laporan neraca\n"
-            "✅ Optimasi UI Windows 10/11: Performa rendering lebih cepat & bebas memory leak\n\n"
-            "Terima kasih telah menggunakan Koperasi Brimob."
+            "✅ Konkurensi Database: Mode SQLite WAL untuk transaksi multi-thread lancar\n\n"
+            "Terima kasih telah menggunakan Sistem Koperasi."
         )
         tkinter.messagebox.showinfo(f"Update Berhasil (v{old_ver} -> v{new_ver})", notes)
 

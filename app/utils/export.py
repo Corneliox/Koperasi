@@ -170,7 +170,7 @@ def export_mutations_excel(mutations: list, filename: str = "Laporan_Mutasi",
 class PDFReport(FPDF):
     """Custom PDF class for reports"""
     
-    def __init__(self, title: str = "Laporan Koperasi Brimob"):
+    def __init__(self, title: str = "Laporan Koperasi"):
         super().__init__()
         self.title = title
         self.set_auto_page_break(auto=True, margin=15)

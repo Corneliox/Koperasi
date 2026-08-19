@@ -291,7 +291,7 @@ def export_balance_sheet_excel(balance_data: dict, output_dir: str = None) -> st
             'bold': True, 'font_size': 16, 'align': 'center'
         })
         worksheet.merge_range('A1:B1', 'NERACA KEUANGAN', title_format)
-        worksheet.merge_range('A2:B2', 'KOPERASI BRIMOB', title_format)
+        worksheet.merge_range('A2:B2', 'KOPERASI SIMPAN PINJAM', title_format)
         
         # Period info
         period_format = workbook.add_format({'font_size': 11, 'align': 'center'})
@@ -352,7 +352,7 @@ def export_balance_sheet_pdf(balance_data: dict, output_dir: str = None) -> str:
     pdf.set_font('Helvetica', 'B', 18)
     pdf.cell(0, 10, 'NERACA KEUANGAN', align='C', new_x="LMARGIN", new_y="NEXT")
     pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 8, 'KOPERASI BRIMOB', align='C', new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, 'KOPERASI SIMPAN PINJAM', align='C', new_x="LMARGIN", new_y="NEXT")
     
     # Period
     pdf.set_font('Helvetica', '', 11)

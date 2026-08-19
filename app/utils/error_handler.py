@@ -62,7 +62,7 @@ def handle_exception(exc_type: Type[BaseException], exc_value: BaseException, ex
     
     try:
         with open(report_file, "w", encoding='utf-8') as f:
-            f.write("=== KOPERASI BRIMOB CRASH REPORT ===\n")
+            f.write("=== KOPERASI CRASH REPORT ===\n")
             f.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
             f.write(f"Python Version: {sys.version}\n")
             f.write(f"Platform: {sys.platform}\n")

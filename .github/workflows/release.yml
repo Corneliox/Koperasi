@@ -46,11 +46,11 @@ jobs:
       - name: Verify Executable Output
         shell: pwsh
         run: |
-          if (Test-Path "dist/KoperasiBrimob.exe") {
-            $size = [math]::Round((Get-Item "dist/KoperasiBrimob.exe").Length / 1MB, 2)
-            Write-Host "SUCCESS: dist/KoperasiBrimob.exe built successfully ($size MB)"
+          if (Test-Path "dist/Koperasi.exe") {
+            $size = [math]::Round((Get-Item "dist/Koperasi.exe").Length / 1MB, 2)
+            Write-Host "SUCCESS: dist/Koperasi.exe built successfully ($size MB)"
           } else {
-            Write-Error "ERROR: dist/KoperasiBrimob.exe was not created!"
+            Write-Error "ERROR: dist/Koperasi.exe was not created!"
             exit 1
           }
 
@@ -75,7 +75,7 @@ jobs:
       - name: Verify Installer Output
         shell: pwsh
         run: |
-          $installers = Get-ChildItem -Path . -Filter "KoperasiBrimob_Setup_*.exe"
+          $installers = Get-ChildItem -Path . -Filter "Koperasi_Setup_*.exe"
           if ($installers.Count -gt 0) {
             foreach ($inst in $installers) {
               $size = [math]::Round($inst.Length / 1MB, 2)
@@ -89,7 +89,7 @@ jobs:
       - name: Generate SHA256 Checksums
         shell: pwsh
         run: |
-          $files = @(Get-ChildItem -Path . -Filter "KoperasiBrimob_Setup_*.exe") + @(Get-Item -Path "dist/KoperasiBrimob.exe")
+          $files = @(Get-ChildItem -Path . -Filter "Koperasi_Setup_*.exe") + @(Get-Item -Path "dist/Koperasi.exe")
           $checksums = foreach ($file in $files) {
             $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
             "$hash  $($file.Name)"
@@ -107,7 +107,7 @@ jobs:
           } elseif ("${{ inputs.release_tag }}" -ne "") {
             $tag = "${{ inputs.release_tag }}"
           } else {
-            $tag = "v4.2"
+            $tag = "v4.3"
           }
           Write-Host "Target Tag: $tag"
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -116,31 +116,31 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get_tag.outputs.tag }}
-          name: "Koperasi Brimob ${{ steps.get_tag.outputs.tag }} (Windows 10/11 64-bit)"
+          name: "Sistem Koperasi ${{ steps.get_tag.outputs.tag }} (Windows 10/11 64-bit)"
           draft: false
           prerelease: false
           files: |
-            KoperasiBrimob_Setup_*.exe
-            dist/KoperasiBrimob.exe
+            Koperasi_Setup_*.exe
+            dist/Koperasi.exe
             SHA256SUMS.txt
           body: |
-            ## 🏛️ Koperasi Brimob Release ${{ steps.get_tag.outputs.tag }}
-            ### 💻 Khusus Sistem Operasi Windows 10 / Windows 11 (64-Bit)
+            ## 🏛️ Sistem Koperasi Release ${{ steps.get_tag.outputs.tag }}
+            ### 💻 Khusus Sistem Operasi Windows 10 / Windows 11 (64-Bit) - Offline / Lokal
             
-            Versi ini menghadirkan perbaikan menyeluruh terhadap stabilitas, integritas data, dan pencegahan crash saat input data.
+            Versi 4.3 menghadirkan sistem autentikasi pendaftaran akun baru mandiri, enkripsi password lokal yang aman, netralisasi antarmuka, serta isolasi eksekusi 100% offline.
 
             ---
 
             ### 🚀 Apa yang Baru di Versi Ini:
-            - **🛡️ Stabilitas Penuh & Mitigasi Crash**: Form input data diperkuat dengan sanitasi angka cerdas (`clean_numeric`) serta isolasi exception pada fitur pencarian dan autocomplete.
-            - **⚡ Konkurensi Database Tinggi**: Mengaktifkan mode SQLite WAL (*Write-Ahead Logging*) dan `busy_timeout` untuk mencegah *database lock* saat multi-tasking kasir.
-            - **🧾 Format Transaksi & Struk Presisi**: Format struk belanja dan invoice PDF telah disinkronkan dan mendukung transaksi multi-item maupun single-item.
-            - **📊 Akurasi Laporan Keuangan**: Pemisahan pokok pinjaman dan pendapatan bunga pinjaman pada laporan neraca laba-rugi.
-            - **💻 Optimal untuk Windows 10 & 11 64-bit**: Dikompilasi secara native untuk performa maksimal pada arsitektur Windows 10 / 11 modern.
+            - **🔐 Sistem Autentikasi Register & Login Mandiri**: Pendaftaran akun pengguna mandiri dari layar awal dengan enkripsi password (SHA-256 + Salt). Akun pertama otomatis menjadi Super Administrator.
+            - **🏢 Antarmuka Netral & Fleksibel**: Pembersihan penamaan khusus menjadi sistem manajemen koperasi simpan pinjam dan kasir POS yang profesional.
+            - **⚡ Operasi 100% Offline / Mandiri**: Seluruh database, transaksi, struk, dan laporan tersimpan di penyimpanan lokal tanpa koneksi luar.
+            - **🛡️ Stabilitas Maksimal**: Sanitasi input angka, pencegahan force close saat pengetikan cepat, dan konkurensi SQLite WAL.
+            - **📊 Neraca & Struk Presisi**: Format struk kasir, invoice PDF, dan laporan keuangan neraca laba-rugi telah disinkronkan.
 
             ---
 
             ### 📦 File Unduhan:
-            1. **Installer Setup (Disarankan)**: `KoperasiBrimob_Setup_v4.2.exe` (Instalasi otomatis + Desktop Shortcut).
-            2. **Standalone Portable**: `KoperasiBrimob.exe` (Jalankan langsung tanpa instalasi).
+            1. **Installer Setup (Disarankan)**: `Koperasi_Setup_v4.3.exe` (Instalasi otomatis + Shortcut Desktop).
+            2. **Standalone Portable**: `Koperasi.exe` (Jalankan langsung tanpa instalasi).
             3. **Checksum Integritas**: `SHA256SUMS.txt`

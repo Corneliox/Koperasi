@@ -1,26 +1,41 @@
 """
-Database Connection and Schema for Koperasi Brimob
-Complete SQLite3 implementation with all required tables
+Database Connection and Schema for Sistem Koperasi
+Complete SQLite3 implementation with all required tables (Offline / Local)
 """
 import sqlite3
 import os
 import sys
+import hashlib
+import secrets
 from datetime import datetime
 
 def get_db_path():
-    """Get persistent database path in AppData"""
+    """Get persistent database path in AppData or local folder with auto-migration"""
     if getattr(sys, 'frozen', False):
         # Running as compiled exe
         app_data = os.environ.get('APPDATA', os.path.expanduser('~\\AppData\\Roaming'))
-        db_dir = os.path.join(app_data, "KoperasiBrimob")
+        db_dir = os.path.join(app_data, "Koperasi")
+        old_brimob_db = os.path.join(app_data, "KoperasiBrimob", "koperasi_brimob.db")
     else:
         # Running in development
         db_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        old_brimob_db = os.path.join(db_dir, "koperasi_brimob.db")
     
     if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
+        os.makedirs(db_dir, exist_ok=True)
         
-    return os.path.join(db_dir, "koperasi_brimob.db")
+    target_db = os.path.join(db_dir, "koperasi.db")
+    
+    # Seamless auto-migration from legacy database if target doesn't exist yet
+    if not os.path.exists(target_db) and os.path.exists(old_brimob_db):
+        try:
+            import shutil
+            shutil.copy2(old_brimob_db, target_db)
+            print(f"Migrated legacy database from {old_brimob_db} to {target_db}")
+        except Exception as e:
+            print(f"Auto-migration failed: {e}")
+            
+    return target_db
 
 DB_PATH = get_db_path()
 
@@ -263,42 +278,132 @@ def init_database():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_mutation_item ON warehouse_mutation(item_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_loans_member ON loans(member_id)")
     
-    # Insert default admin user if not exists
-    cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute(
-            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-            ('admin', 'admin123', 'admin')
-        )
-    
     conn.commit()
     conn.close()
     print(f"Database initialized at: {DB_PATH}")
 
 
+def hash_password(password: str, salt: str = None) -> str:
+    """Hash password using SHA-256 with cryptographic salt"""
+    if not salt:
+        salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((salt + password).encode('utf-8')).hexdigest()
+    return f"{salt}:{hashed}"
+
+
+def verify_password(stored_password: str, provided_password: str) -> bool:
+    """Verify password supporting both salted hashes and legacy plaintext"""
+    if not stored_password or not provided_password:
+        return False
+    if ":" in stored_password:
+        salt, _ = stored_password.split(":", 1)
+        return hash_password(provided_password, salt) == stored_password
+    # Legacy plaintext check
+    return stored_password == provided_password
+
+
+def has_registered_users() -> bool:
+    """Check if at least one user account exists in the database"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception:
+        return False
+
+
+def register_user(username: str, password: str, full_name: str = "", role: str = "admin") -> dict:
+    """
+    Register a new user account in the local database
+    :param username: Unique username
+    :param password: Raw password to hash
+    :param full_name: Optional display name
+    :param role: 'admin' or 'operator'
+    :return: dict with success status and message
+    """
+    username = username.strip()
+    password = password.strip()
+    
+    if len(username) < 3:
+        return {"success": False, "message": "Username minimal 3 karakter!"}
+    if len(password) < 4:
+        return {"success": False, "message": "Password minimal 4 karakter!"}
+    
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        # Check if username already exists
+        cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        if cursor.fetchone():
+            return {"success": False, "message": f"Username '{username}' sudah terdaftar!"}
+        
+        # If this is the very first user, guarantee admin role
+        cursor.execute("SELECT COUNT(*) FROM users")
+        if cursor.fetchone()[0] == 0:
+            role = "admin"
+            
+        hashed_pw = hash_password(password)
+        cursor.execute(
+            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+            (username, hashed_pw, role)
+        )
+        user_id = cursor.lastrowid
+        conn.commit()
+        
+        log_activity(username, "REGISTER", f"Pendaftaran akun baru: {username} ({role})")
+        return {"success": True, "message": "Akun berhasil didaftarkan! Silakan masuk.", "user_id": user_id}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": f"Gagal mendaftarkan akun: {str(e)}"}
+    finally:
+        conn.close()
+
+
 def log_activity(user: str, action_type: str, details: str):
     """Log an activity to the activity_logs table"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO activity_logs (user, action_type, details) VALUES (?, ?, ?)",
-        (user, action_type, details)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO activity_logs (user, action_type, details) VALUES (?, ?, ?)",
+            (user, action_type, details)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 def verify_login(username: str, password: str) -> bool:
-    """Verify user login credentials"""
+    """Verify user login credentials with automatic legacy hash upgrade"""
+    username = username.strip()
+    if not username or not password:
+        return False
+        
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT * FROM users WHERE username = ? AND password = ?",
-        (username, password)
-    )
-    result = cursor.fetchone()
-    conn.close()
-    return result is not None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, password FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+            
+        user_id, stored_password = row[0], row[1]
+        if verify_password(stored_password, password):
+            # If stored password was plaintext legacy, auto-upgrade to secure salted hash
+            if ":" not in stored_password:
+                new_hash = hash_password(password)
+                cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_hash, user_id))
+                conn.commit()
+            return True
+        return False
+    except Exception:
+        return False
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
