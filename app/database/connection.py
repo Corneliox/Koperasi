@@ -272,12 +272,21 @@ def init_database():
     """)
     
     # Create indexes for better performance
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_warehouse_category ON warehouse(category_type)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_type)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mutation_item ON warehouse_mutation(item_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_loans_member ON loans(member_id)")
-    
+    # Ensure users table has security and legacy recovery columns
+    try:
+        cursor.execute("PRAGMA table_info(users)")
+        cols = [r['name'] for r in cursor.fetchall()]
+        if 'security_question' not in cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN security_question TEXT")
+        if 'security_answer' not in cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN security_answer TEXT")
+        if 'recovery_pin' not in cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN recovery_pin TEXT")
+        if 'is_legacy' not in cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_legacy INTEGER DEFAULT 0")
+    except Exception as e:
+        print(f"User table migration notice: {e}")
+
     conn.commit()
     conn.close()
     print(f"Database initialized at: {DB_PATH}")
@@ -315,17 +324,17 @@ def has_registered_users() -> bool:
         return False
 
 
-def register_user(username: str, password: str, full_name: str = "", role: str = "admin") -> dict:
+def register_user(username: str, password: str, full_name: str = "",
+                  security_question: str = "", security_answer: str = "",
+                  recovery_pin: str = "", role: str = "admin") -> dict:
     """
-    Register a new user account in the local database
-    :param username: Unique username
-    :param password: Raw password to hash
-    :param full_name: Optional display name
-    :param role: 'admin' or 'operator'
-    :return: dict with success status and message
+    Register a new user account in the local database with security question & PIN
     """
     username = username.strip()
     password = password.strip()
+    security_question = security_question.strip()
+    security_answer = security_answer.strip().lower()
+    recovery_pin = recovery_pin.strip()
     
     if len(username) < 3:
         return {"success": False, "message": "Username minimal 3 karakter!"}
@@ -346,18 +355,183 @@ def register_user(username: str, password: str, full_name: str = "", role: str =
             role = "admin"
             
         hashed_pw = hash_password(password)
+        hashed_ans = hash_password(security_answer) if security_answer else None
+        hashed_pin = hash_password(recovery_pin) if recovery_pin else None
+        
         cursor.execute(
-            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-            (username, hashed_pw, role)
+            """INSERT INTO users 
+               (username, password, role, security_question, security_answer, recovery_pin, is_legacy) 
+               VALUES (?, ?, ?, ?, ?, ?, 0)""",
+            (username, hashed_pw, role, security_question, hashed_ans, hashed_pin)
         )
         user_id = cursor.lastrowid
         conn.commit()
         
         log_activity(username, "REGISTER", f"Pendaftaran akun baru: {username} ({role})")
-        return {"success": True, "message": "Akun berhasil didaftarkan! Silakan masuk.", "user_id": user_id}
+        return {"success": True, "message": "Akun berhasil didaftarkan!", "user_id": user_id}
     except Exception as e:
         conn.rollback()
         return {"success": False, "message": f"Gagal mendaftarkan akun: {str(e)}"}
+    finally:
+        conn.close()
+
+
+def get_user_security_info(username: str) -> dict:
+    """Get security question and legacy status for an account"""
+    username = username.strip()
+    if not username:
+        return {"success": False, "message": "Username tidak boleh kosong"}
+        
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, username, security_question, security_answer, recovery_pin, is_legacy FROM users WHERE LOWER(username) = LOWER(?)",
+            (username,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return {"success": False, "message": f"Akun '{username}' tidak ditemukan!"}
+            
+        has_security = bool(row['security_question'] and row['security_answer'])
+        has_pin = bool(row['recovery_pin'])
+        is_legacy = bool(row['is_legacy'] or not has_security)
+        
+        return {
+            "success": True,
+            "username": row['username'],
+            "security_question": row['security_question'] or "Belum diatur (Pengguna Versi Lama)",
+            "has_security": has_security,
+            "has_pin": has_pin,
+            "is_legacy": is_legacy
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+    finally:
+        conn.close()
+
+
+def reset_password_with_security(username: str, security_answer: str, new_password: str) -> dict:
+    """Reset user password using security answer verification"""
+    username = username.strip()
+    security_answer = security_answer.strip().lower()
+    new_password = new_password.strip()
+    
+    if len(new_password) < 4:
+        return {"success": False, "message": "Password baru minimal 4 karakter!"}
+        
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, security_answer FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+        if not row:
+            return {"success": False, "message": "Akun tidak ditemukan!"}
+            
+        stored_ans = row['security_answer']
+        if not stored_ans:
+            return {"success": False, "message": "Akun belum mengatur pertanyaan keamanan. Gunakan PIN atau pembaruan akun lama."}
+            
+        if not verify_password(stored_ans, security_answer):
+            return {"success": False, "message": "Jawaban pertanyaan keamanan salah!"}
+            
+        new_hash = hash_password(new_password)
+        cursor.execute("UPDATE users SET password = ?, is_legacy = 0 WHERE id = ?", (new_hash, row['id']))
+        conn.commit()
+        
+        log_activity(username, "PASSWORD_RESET", f"Password direset via pertanyaan keamanan")
+        return {"success": True, "message": "Password berhasil diperbarui! Silakan masuk dengan password baru."}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": str(e)}
+    finally:
+        conn.close()
+
+
+def reset_password_with_pin(username: str, recovery_pin: str, new_password: str) -> dict:
+    """Reset user password using 6-digit recovery PIN"""
+    username = username.strip()
+    recovery_pin = recovery_pin.strip()
+    new_password = new_password.strip()
+    
+    if len(new_password) < 4:
+        return {"success": False, "message": "Password baru minimal 4 karakter!"}
+        
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, recovery_pin FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+        if not row:
+            return {"success": False, "message": "Akun tidak ditemukan!"}
+            
+        stored_pin = row['recovery_pin']
+        if not stored_pin or not verify_password(stored_pin, recovery_pin):
+            return {"success": False, "message": "PIN Pemulihan salah!"}
+            
+        new_hash = hash_password(new_password)
+        cursor.execute("UPDATE users SET password = ?, is_legacy = 0 WHERE id = ?", (new_hash, row['id']))
+        conn.commit()
+        
+        log_activity(username, "PASSWORD_RESET", f"Password direset via PIN Pemulihan")
+        return {"success": True, "message": "Password berhasil diperbarui! Silakan masuk dengan password baru."}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": str(e)}
+    finally:
+        conn.close()
+
+
+def update_legacy_user_credentials(username: str, old_password: str, new_password: str,
+                                   security_question: str, security_answer: str, recovery_pin: str = "") -> dict:
+    """
+    Allow legacy user to authenticate with old password and upgrade to new secure password + security questions
+    """
+    username = username.strip()
+    old_password = old_password.strip()
+    new_password = new_password.strip()
+    security_question = security_question.strip()
+    security_answer = security_answer.strip().lower()
+    recovery_pin = recovery_pin.strip()
+    
+    if len(new_password) < 4:
+        return {"success": False, "message": "Password baru minimal 4 karakter!"}
+    if not security_question or not security_answer:
+        return {"success": False, "message": "Pertanyaan dan jawaban keamanan wajib diisi!"}
+        
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, password FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        row = cursor.fetchone()
+        if not row:
+            return {"success": False, "message": "Akun tidak ditemukan!"}
+            
+        user_id, stored_pw = row['id'], row['password']
+        if not verify_password(stored_pw, old_password):
+            return {"success": False, "message": "Password lama salah!"}
+            
+        new_pw_hash = hash_password(new_password)
+        new_ans_hash = hash_password(security_answer)
+        new_pin_hash = hash_password(recovery_pin) if recovery_pin else None
+        
+        cursor.execute(
+            """UPDATE users SET 
+               password = ?, 
+               security_question = ?, 
+               security_answer = ?, 
+               recovery_pin = ?, 
+               is_legacy = 0 
+               WHERE id = ?""",
+            (new_pw_hash, security_question, new_ans_hash, new_pin_hash, user_id)
+        )
+        conn.commit()
+        
+        log_activity(username, "SECURITY_UPDATE", f"Pembaruan kredensial dan keamanan akun versi lama")
+        return {"success": True, "message": "Akun berhasil diperbarui dengan keamanan penuh!"}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": str(e)}
     finally:
         conn.close()
 
@@ -379,29 +553,47 @@ def log_activity(user: str, action_type: str, details: str):
 
 def verify_login(username: str, password: str) -> bool:
     """Verify user login credentials with automatic legacy hash upgrade"""
+    res = verify_login_detailed(username, password)
+    return res.get("success", False)
+
+
+def verify_login_detailed(username: str, password: str) -> dict:
+    """Verify login and return legacy upgrade status"""
     username = username.strip()
     if not username or not password:
-        return False
+        return {"success": False, "message": "Username dan password wajib diisi"}
         
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, password FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+        cursor.execute(
+            "SELECT id, username, password, security_question, is_legacy, role FROM users WHERE LOWER(username) = LOWER(?)",
+            (username,)
+        )
         row = cursor.fetchone()
         if not row:
-            return False
+            return {"success": False, "message": "Username atau password salah!"}
             
-        user_id, stored_password = row[0], row[1]
-        if verify_password(stored_password, password):
-            # If stored password was plaintext legacy, auto-upgrade to secure salted hash
-            if ":" not in stored_password:
+        user_id, stored_pw = row['id'], row['password']
+        if verify_password(stored_pw, password):
+            # Check if this user needs to configure security question
+            needs_security_setup = bool(not row['security_question'] or row['is_legacy'] == 1 or ":" not in stored_pw)
+            
+            # If stored password was plaintext, auto upgrade
+            if ":" not in stored_pw:
                 new_hash = hash_password(password)
                 cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_hash, user_id))
                 conn.commit()
-            return True
-        return False
-    except Exception:
-        return False
+                
+            return {
+                "success": True,
+                "username": row['username'],
+                "role": row['role'],
+                "needs_security_setup": needs_security_setup
+            }
+        return {"success": False, "message": "Username atau password salah!"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
     finally:
         conn.close()
 
