@@ -196,14 +196,27 @@ class LoanManager:
             conn.close()
             return {"success": False, "message": "Anggota tidak ditemukan"}
         
-        cursor.execute(
-            """INSERT INTO loans 
-               (member_id, principal, interest_rate, duration_months, 
-                total_amount, monthly_payment, due_date, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (member_id, amount, interest_rate, duration_months,
-             total_amount, monthly_payment, due_date, notes)
-        )
+        cursor.execute("PRAGMA table_info(loans)")
+        cols = [c[1] for c in cursor.fetchall()]
+        
+        if 'amount' in cols:
+            cursor.execute(
+                """INSERT INTO loans 
+                   (member_id, amount, principal, interest_rate, duration_months, 
+                    total_amount, monthly_payment, due_date, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (member_id, amount, amount, interest_rate, duration_months,
+                 total_amount, monthly_payment, due_date, notes)
+            )
+        else:
+            cursor.execute(
+                """INSERT INTO loans 
+                   (member_id, principal, interest_rate, duration_months, 
+                    total_amount, monthly_payment, due_date, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (member_id, amount, interest_rate, duration_months,
+                 total_amount, monthly_payment, due_date, notes)
+            )
         loan_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -240,14 +253,27 @@ class LoanManager:
         conn = get_connection()
         cursor = conn.cursor()
         
-        cursor.execute(
-            """UPDATE loans 
-               SET principal=?, interest_rate=?, duration_months=?, 
-                   total_amount=?, monthly_payment=?, notes=?
-               WHERE id=?""",
-            (amount, interest_rate, duration_months,
-             total_amount, monthly_payment, notes, loan_id)
-        )
+        cursor.execute("PRAGMA table_info(loans)")
+        cols = [c[1] for c in cursor.fetchall()]
+        
+        if 'amount' in cols:
+            cursor.execute(
+                """UPDATE loans 
+                   SET amount=?, principal=?, interest_rate=?, duration_months=?, 
+                       total_amount=?, monthly_payment=?, notes=?
+                   WHERE id=?""",
+                (amount, amount, interest_rate, duration_months,
+                 total_amount, monthly_payment, notes, loan_id)
+            )
+        else:
+            cursor.execute(
+                """UPDATE loans 
+                   SET principal=?, interest_rate=?, duration_months=?, 
+                       total_amount=?, monthly_payment=?, notes=?
+                   WHERE id=?""",
+                (amount, interest_rate, duration_months,
+                 total_amount, monthly_payment, notes, loan_id)
+            )
         conn.commit()
         conn.close()
         

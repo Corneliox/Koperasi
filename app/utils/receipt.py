@@ -70,15 +70,28 @@ def generate_receipt(sale_data: dict, output_dir: str = None) -> str:
     
     pdf.set_font('Helvetica', '', 9)
     
-    # Item name (may need truncation)
-    item_name = sale_data.get('item_name', '-')
-    if len(item_name) > 25:
-        item_name = item_name[:25] + '...'
+    items_list = sale_data.get('items', [])
+    if not items_list and sale_data.get('item_name'):
+        items_list = [{
+            'name': sale_data.get('item_name', '-'),
+            'qty': sale_data.get('qty', 0),
+            'price': sale_data.get('unit_price', 0),
+            'total': sale_data.get('total', 0)
+        }]
     
-    pdf.cell(50, 5, item_name, border=0)
-    pdf.cell(15, 5, str(sale_data.get('qty', 0)), border=0, align='C')
-    pdf.cell(25, 5, f"Rp {sale_data.get('unit_price', 0):,.0f}", border=0, align='R')
-    pdf.ln()
+    grand_total = sale_data.get('grand_total', sale_data.get('total', 0))
+    if not grand_total and items_list:
+        grand_total = sum(it.get('total', it.get('qty', 0) * it.get('price', 0)) for it in items_list)
+        
+    for it in items_list:
+        item_name = str(it.get('name', '-'))
+        if len(item_name) > 25:
+            item_name = item_name[:25] + '...'
+        
+        pdf.cell(50, 5, item_name, border=0)
+        pdf.cell(15, 5, str(it.get('qty', 0)), border=0, align='C')
+        pdf.cell(25, 5, f"Rp {it.get('price', 0):,.0f}", border=0, align='R')
+        pdf.ln()
     
     pdf.ln(3)
     pdf.line(10, pdf.get_y(), 90, pdf.get_y())
@@ -87,7 +100,7 @@ def generate_receipt(sale_data: dict, output_dir: str = None) -> str:
     # Total
     pdf.set_font('Helvetica', 'B', 11)
     pdf.cell(50, 6, 'TOTAL:', border=0)
-    pdf.cell(40, 6, f"Rp {sale_data.get('total', 0):,.0f}", border=0, align='R')
+    pdf.cell(40, 6, f"Rp {grand_total:,.0f}", border=0, align='R')
     pdf.ln(8)
     
     # Footer
@@ -134,17 +147,29 @@ def generate_thermal_receipt(sale_data: dict, output_dir: str = None) -> str:
     
     lines.append("-" * 32)
     
-    # Item
-    item_name = sale_data.get('item_name', '-')[:25]
-    qty = sale_data.get('qty', 0)
-    unit_price = sale_data.get('unit_price', 0)
-    total = sale_data.get('total', 0)
+    # Items
+    items_list = sale_data.get('items', [])
+    if not items_list and sale_data.get('item_name'):
+        items_list = [{
+            'name': sale_data.get('item_name', '-'),
+            'qty': sale_data.get('qty', 0),
+            'price': sale_data.get('unit_price', 0),
+            'total': sale_data.get('total', 0)
+        }]
     
-    lines.append(item_name)
-    lines.append(f"  {qty} x Rp {unit_price:,.0f}")
+    grand_total = sale_data.get('grand_total', sale_data.get('total', 0))
+    if not grand_total and items_list:
+        grand_total = sum(it.get('total', it.get('qty', 0) * it.get('price', 0)) for it in items_list)
+        
+    for it in items_list:
+        item_name = str(it.get('name', '-'))[:25]
+        qty = it.get('qty', 0)
+        unit_price = it.get('price', 0)
+        lines.append(item_name)
+        lines.append(f"  {qty} x Rp {unit_price:,.0f}")
     
     lines.append("-" * 32)
-    lines.append(f"TOTAL: Rp {total:,.0f}".rjust(32))
+    lines.append(f"TOTAL: Rp {grand_total:,.0f}".rjust(32))
     lines.append("=" * 32)
     lines.append("   Terima kasih")
     lines.append("")

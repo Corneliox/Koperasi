@@ -25,20 +25,22 @@ def run_simulation():
     transactions = TransactionManager("SEMBAKO")
     
     print("--- STEP 1: MEMBER MANAGEMENT ---")
+    import time
     member_name = "Simulasi Anggota"
-    member_nrp = "NRP-SIM-99"
+    member_nrp = f"NRP-SIM-{int(time.time())}"
     res_m = members.add_member(name=member_name, nrp=member_nrp, unit="SIMULASI", rank="BRIPDA")
     if res_m and res_m.get('success'):
         member_id = res_m['id']
         print(f"SUCCESS: Member created (ID: {member_id})")
     else:
-        print("FAILED: Member creation")
+        print(f"FAILED: Member creation: {res_m.get('message') if res_m else 'None'}")
         return
 
     print("\n--- STEP 2: INVENTORY MANAGEMENT ---")
     item_name = "Barang Simulasi"
-    item_id = warehouse.add_item(name=item_name, stock=50, buy_price=10000, sell_price=15000, item_code="CODE-SIM")
-    if item_id:
+    res_i = warehouse.add_item(name=item_name, stock=50, buy_price=10000, sell_price=15000, item_code="CODE-SIM")
+    if res_i and res_i.get('success'):
+        item_id = res_i['id']
         print(f"SUCCESS: Item added (ID: {item_id})")
         warehouse.update_item(item_id, name=f"{item_name} Edited", stock=50, buy_price=11000, sell_price=16000, status="Koperasi", description="Update test", item_code="CODE-SIM-ED")
         print("SUCCESS: Item updated")

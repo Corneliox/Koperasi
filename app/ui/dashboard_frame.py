@@ -209,9 +209,13 @@ class DashboardFrame(ctk.CTkFrame):
         subtitle_label.pack(anchor="w", padx=20, pady=(5, 20))
     
     def create_quick_info(self):
-        """Create quick info section with low stock items"""
-        self.info_frame = ctk.CTkFrame(self.main_scroll, fg_color="#1a1a2e", corner_radius=10)
-        self.info_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+        """Create or refresh quick info section with low stock items"""
+        if hasattr(self, 'info_frame') and self.info_frame.winfo_exists():
+            for widget in self.info_frame.winfo_children():
+                widget.destroy()
+        else:
+            self.info_frame = ctk.CTkFrame(self.main_scroll, fg_color="#1a1a2e", corner_radius=10)
+            self.info_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
         
         # Title
         ctk.CTkLabel(

@@ -127,13 +127,22 @@ class FinancialReportManager:
         # 7. Gross Profit (Laba Kotor)
         gross_profit = sales_revenue - cogs
         
-        # 8. Loan Interest Received (Pendapatan Bunga)
+        # 8. Loan Interest Received (Pendapatan Bunga Pinjaman)
         cursor.execute("""
-            SELECT COALESCE(SUM(amount), 0) as interest
-            FROM loan_payments
-            WHERE DATE(payment_date) BETWEEN ? AND ?
+            SELECT COALESCE(SUM(
+                CASE WHEN l.total_amount > 0 AND l.total_amount > l.principal 
+                     THEN lp.amount * ((l.total_amount - l.principal) * 1.0 / l.total_amount)
+                     ELSE 0 
+                END
+            ), 0) as interest,
+            COALESCE(SUM(lp.amount), 0) as total_payments
+            FROM loan_payments lp
+            JOIN loans l ON lp.loan_id = l.id
+            WHERE DATE(lp.payment_date) BETWEEN ? AND ?
         """, [start_date, end_date])
-        loan_payments_received = cursor.fetchone()['interest']
+        row_lp = cursor.fetchone()
+        loan_interest_received = row_lp['interest'] if row_lp else 0
+        loan_payments_total = row_lp['total_payments'] if row_lp else 0
         
         # === MUTATIONS SUMMARY ===
         
@@ -160,8 +169,8 @@ class FinancialReportManager:
         
         # Calculate totals
         total_assets = inventory_value + outstanding_loans
-        total_income = sales_revenue + loan_payments_received
-        net_income = gross_profit + loan_payments_received
+        total_income = sales_revenue + loan_interest_received
+        net_income = gross_profit + loan_interest_received
         
         return {
             'period': {
@@ -183,7 +192,7 @@ class FinancialReportManager:
                 'items_sold': items_sold,
                 'cogs': cogs,
                 'gross_profit': gross_profit,
-                'loan_interest': loan_payments_received,
+                'loan_interest': loan_interest_received,
                 'total_income': total_income,
                 'net_income': net_income
             },

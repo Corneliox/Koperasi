@@ -952,8 +952,8 @@ class MemberPurchaseDialog(ctk.CTkToplevel):
                     self.parent.load_data()
             except:
                 pass
-    
-        def sell(self):
-            """Alias for save_all_dialogs to find during quit"""
-            self.process_checkout(silent=True)
+
+    def sell(self):
+        """Alias for save_all_dialogs to find during quit"""
+        self.process_checkout(silent=True)
         

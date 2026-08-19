@@ -121,7 +121,11 @@ def log_custom_error(message: str, details: str = None):
     except:
         pass
     
-    tkinter.messagebox.showerror("Error", f"{message}\n\n{details if details else ''}")
+    try:
+        if tkinter._default_root is not None and tkinter._default_root.winfo_exists():
+            tkinter.messagebox.showerror("Error", f"{message}\n\n{details if details else ''}")
+    except Exception:
+        pass
 
 def clean_numeric(value: str) -> float:
     """Helper to safely convert UI strings (with dots/commas) to float"""

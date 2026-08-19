@@ -153,12 +153,12 @@ class WarehouseManager:
         )
     
     @handle_db_errors
-    def update_item(self, item_id: int, name_or_data, stock: int = None, buy_price: float = None,
+    def update_item(self, item_id: int, name_or_data = None, stock: int = None, buy_price: float = None,
                     sell_price: float = None, status: str = None, description: str = None,
-                    item_code: str = "", is_active: int = 1) -> dict:
+                    item_code: str = "", is_active: int = 1, name: str = None, **kwargs) -> dict:
         """
         Update item and create mutation if stock changed
-        Supports both positional arguments and dictionary input
+        Supports positional arguments, keyword arguments, and dictionary input
         """
         # Handle dictionary input if passed as second argument
         if isinstance(name_or_data, dict):
@@ -172,7 +172,8 @@ class WarehouseManager:
             item_code = data.get('item_code', '')
             is_active = data.get('is_active', 1)
         else:
-            name = name_or_data
+            if name is None:
+                name = name_or_data
 
         # Get old stock first
         old_item = self.get_item_by_id(item_id)

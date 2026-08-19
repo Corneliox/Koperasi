@@ -26,9 +26,11 @@ DB_PATH = get_db_path()
 
 
 def get_connection():
-    """Get database connection with foreign keys enabled and timeout for stability"""
-    conn = sqlite3.connect(DB_PATH, timeout=20)
+    """Get database connection with foreign keys enabled, WAL mode, and timeout for multi-thread stability"""
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -122,7 +124,7 @@ def init_database():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_id INTEGER NOT NULL,
+            item_id INTEGER,
             member_id INTEGER,
             qty INTEGER NOT NULL,
             unit_price REAL NOT NULL,
@@ -134,6 +136,38 @@ def init_database():
             FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
         )
     """)
+    
+    # Check if transactions table has NOT NULL on item_id and migrate if needed
+    try:
+        cursor.execute("PRAGMA table_info(transactions)")
+        t_cols = cursor.fetchall()
+        item_id_info = next((c for c in t_cols if c[1] == 'item_id'), None)
+        if item_id_info and item_id_info[3] == 1:  # notnull is 1
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.execute("""
+                CREATE TABLE transactions_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id INTEGER,
+                    member_id INTEGER,
+                    qty INTEGER NOT NULL,
+                    unit_price REAL NOT NULL,
+                    total_price REAL NOT NULL,
+                    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    category_type TEXT NOT NULL,
+                    payment_method TEXT DEFAULT 'Tunai',
+                    FOREIGN KEY (item_id) REFERENCES warehouse(id) ON DELETE SET NULL,
+                    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO transactions_new (id, item_id, member_id, qty, unit_price, total_price, date, category_type, payment_method)
+                SELECT id, item_id, member_id, qty, unit_price, total_price, date, category_type, payment_method FROM transactions
+            """)
+            cursor.execute("DROP TABLE transactions")
+            cursor.execute("ALTER TABLE transactions_new RENAME TO transactions")
+            cursor.execute("PRAGMA foreign_keys = ON")
+    except Exception:
+        pass
     
     # Loans table for member loans
     cursor.execute("""
@@ -161,6 +195,10 @@ def init_database():
         pass
     try:
         cursor.execute("ALTER TABLE loans ADD COLUMN principal REAL DEFAULT 0")
+    except:
+        pass
+    try:
+        cursor.execute("UPDATE loans SET principal = amount WHERE (principal IS NULL OR principal = 0) AND amount IS NOT NULL")
     except:
         pass
     try:

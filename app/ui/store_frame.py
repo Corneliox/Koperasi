@@ -3,6 +3,7 @@ Store Frame - Inventory Management UI with Grid System
 Features: CRUD, Search, Refresh, Return, Anti-duplicate windows, Excel Import, Receipt Printing
 REFACTORED: Synchronized header/row alignment, status badges, fluid full-width layout.
 """
+from datetime import datetime
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
 from app.modules.warehouse import WarehouseManager
@@ -661,7 +662,12 @@ class ImportPreviewDialog(ctk.CTkToplevel):
                 
     def process_import(self):
         sheet = self.sheet_var.get()
-        result = import_inventory_from_excel(self.filepath, sheet, self.category, self.user)
+        result = import_inventory_from_excel(
+            filepath=self.filepath,
+            category_context=self.category,
+            current_user=self.user,
+            sheet_name=sheet
+        )
         
         if result['success']:
             messagebox.showinfo("Sukses", result['message'])
@@ -1065,6 +1071,11 @@ class SellDialog(ctk.CTkToplevel):
                         'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         'member_name': self.member_data['name'],
                         'member_nrp': self.member_data.get('nrp', '-'),
+                        'category': self.item.get('category_type', 'SEMBAKO'),
+                        'item_name': self.item['name'],
+                        'qty': qty,
+                        'unit_price': self.item['sell_price'],
+                        'total': qty * self.item['sell_price'],
                         'items': [{
                             'name': self.item['name'],
                             'qty': qty,

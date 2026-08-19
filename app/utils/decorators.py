@@ -31,5 +31,5 @@ def handle_db_errors(func):
             error_msg = f"Kesalahan Database: {user_msg}"
             details = traceback.format_exc()
             log_custom_error(error_msg, details)
-            return None
+            return {"success": False, "message": user_msg}
     return wrapper
