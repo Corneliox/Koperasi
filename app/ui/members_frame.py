@@ -7,6 +7,7 @@ from tkinter import messagebox
 from app.modules.members import MemberManager
 from app.modules.warehouse import WarehouseManager
 from app.utils.receipt import generate_invoice
+from app.utils.error_handler import clean_numeric
 
 
 class MembersFrame(ctk.CTkFrame):
@@ -194,14 +195,20 @@ class MembersFrame(ctk.CTkFrame):
             print(f"ERROR rendering member row {row_idx}: {e}")
     
     def search_members(self):
-        """Search members"""
-        search = self.search_entry.get().strip()
-        self.load_data(search if search else None)
+        """Search members safely"""
+        try:
+            search = self.search_entry.get().strip()
+            self.load_data(search if search else None)
+        except Exception:
+            pass
     
     def refresh_data(self):
         """Refresh table"""
-        self.search_entry.delete(0, "end")
-        self.load_data()
+        try:
+            self.search_entry.delete(0, "end")
+            self.load_data()
+        except Exception:
+            pass
     
     def open_purchase_dialog(self, member: dict):
         """Open purchase dialog for a member"""
@@ -221,7 +228,7 @@ class MembersFrame(ctk.CTkFrame):
             self.active_windows[window_key].lift()
             return
         
-        dialog = MemberDialog(self, "Tambah Anggota Baru", self.on_member_saved, 
+        dialog = MemberDialog(self, "➕ Tambah Anggota Baru", self.on_member_saved, 
                              member_manager=self.member_manager)
         self.active_windows[window_key] = dialog
         dialog.protocol("WM_DELETE_WINDOW", lambda: self.close_window(window_key))
@@ -239,10 +246,15 @@ class MembersFrame(ctk.CTkFrame):
         dialog.protocol("WM_DELETE_WINDOW", lambda: self.close_window(window_key))
     
     def close_window(self, window_key: str):
-        """Close window"""
+        """Close window safely"""
         if window_key in self.active_windows:
-            self.active_windows[window_key].destroy()
+            win = self.active_windows[window_key]
             del self.active_windows[window_key]
+            try:
+                if win and win.winfo_exists():
+                    win.destroy()
+            except Exception:
+                pass
     
     def on_member_saved(self, data: dict, member_id: int = None):
         """Handle member save with stay or close option"""
@@ -718,19 +730,22 @@ class MemberPurchaseDialog(ctk.CTkToplevel):
         self.load_items()
 
     def load_items(self):
-        """Load items from current warehouse category"""
-        for widget in self.items_scroll.winfo_children():
-            widget.destroy()
+        """Load items from current warehouse category safely"""
+        try:
+            for widget in self.items_scroll.winfo_children():
+                widget.destroy()
+                
+            search = self.search_entry.get().strip()
+            items = self.current_warehouse.get_all_items(search if search else None)
             
-        search = self.search_entry.get().strip()
-        items = self.current_warehouse.get_all_items(search if search else None)
-        
-        if not items:
-            ctk.CTkLabel(self.items_scroll, text="Tidak ada barang ditemukan", text_color="#888").pack(pady=20)
-            return
-            
-        for item in items:
-            self.create_item_row(item)
+            if not items:
+                ctk.CTkLabel(self.items_scroll, text="Tidak ada barang ditemukan", text_color="#888").pack(pady=20)
+                return
+                
+            for item in items:
+                self.create_item_row(item)
+        except Exception:
+            pass
 
     def create_item_row(self, item: dict):
         """Create a row for product selection"""
@@ -768,9 +783,9 @@ class MemberPurchaseDialog(ctk.CTkToplevel):
     def add_to_cart(self, item: dict, qty_input):
         """Add item to shopping cart"""
         try:
-            qty = int(qty_input.get())
-        except ValueError:
-            messagebox.showerror("Error", "Jumlah harus berupa angka")
+            qty = int(clean_numeric(qty_input.get()))
+        except (ValueError, TypeError):
+            messagebox.showerror("Error", "Jumlah harus berupa angka valid")
             return
             
         if qty <= 0: return

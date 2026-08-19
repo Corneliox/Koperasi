@@ -10,6 +10,7 @@ from app.modules.warehouse import WarehouseManager
 from app.utils.export import export_inventory_excel, export_inventory_pdf
 from app.utils.excel_import import import_inventory_from_excel, get_workbook_sheets, preview_excel_data
 from app.utils.receipt import generate_receipt
+from app.utils.error_handler import clean_numeric
 
 
 class StoreFrame(ctk.CTkFrame):
@@ -534,10 +535,15 @@ class StoreFrame(ctk.CTkFrame):
                 messagebox.showerror("Error", result['message'])
     
     def close_window(self, window_key: str):
-        """Close window and remove from registry"""
+        """Close window and remove from registry safely"""
         if window_key in self.active_windows:
-            self.active_windows[window_key].destroy()
+            win = self.active_windows[window_key]
             del self.active_windows[window_key]
+            try:
+                if win and win.winfo_exists():
+                    win.destroy()
+            except Exception:
+                pass
             
     def on_save(self, data: dict, item_id: int = None):
         """Handle save callback from ItemDialog"""
@@ -806,12 +812,12 @@ class ItemDialog(ctk.CTkToplevel):
         name = self.name_entry.get().strip()
         
         try:
-            stock = int(self.stock_entry.get())
-            buy_price = float(self.buy_price_entry.get())
-            sell_price = float(self.sell_price_entry.get())
-        except ValueError:
+            stock = int(clean_numeric(self.stock_entry.get()))
+            buy_price = clean_numeric(self.buy_price_entry.get())
+            sell_price = clean_numeric(self.sell_price_entry.get())
+        except (ValueError, TypeError):
             if not is_quitting:
-                messagebox.showerror("Error", "Stok dan Harga harus berupa angka!")
+                messagebox.showerror("Error", "Stok dan Harga harus berupa angka valid!")
             return
             
         # MANDATORY CHECK
@@ -969,57 +975,71 @@ class SellDialog(ctk.CTkToplevel):
 
     def on_member_search(self, event=None):
         """Filter members as user types"""
-        query = self.member_search.get().strip()
-        if len(query) < 2:
+        try:
+            query = self.member_search.get().strip()
+            if len(query) < 2:
+                self.hide_autocomplete()
+                return
+                
+            members = self.member_manager.get_all_members(query)
+            if not members:
+                self.hide_autocomplete()
+                return
+                
+            self.show_autocomplete(members[:5])
+        except Exception:
             self.hide_autocomplete()
-            return
-            
-        members = self.member_manager.get_all_members(query)
-        if not members:
-            self.hide_autocomplete()
-            return
-            
-        self.show_autocomplete(members[:5])
 
     def show_autocomplete(self, members):
-        """Display dropdown with member results"""
-        for widget in self.autocomplete_frame.winfo_children():
-            widget.destroy()
-            
-        for m in members:
-            btn = ctk.CTkButton(
-                self.autocomplete_frame, 
-                text=f"{m['name']} ({m.get('nrp', '-')})",
-                fg_color="transparent", hover_color="#374151",
-                anchor="w", height=30, corner_radius=0,
-                command=lambda member=m: self.select_member(member)
-            )
-            btn.pack(fill="x")
-            
-        self.autocomplete_frame.pack(padx=40, fill="x", after=self.member_search)
+        """Display dropdown with member results safely"""
+        try:
+            for widget in self.autocomplete_frame.winfo_children():
+                widget.destroy()
+                
+            for m in members:
+                btn = ctk.CTkButton(
+                    self.autocomplete_frame, 
+                    text=f"{m['name']} ({m.get('nrp', '-')})",
+                    fg_color="transparent", hover_color="#374151",
+                    anchor="w", height=30, corner_radius=0,
+                    command=lambda member=m: self.select_member(member)
+                )
+                btn.pack(fill="x")
+                
+            if not self.autocomplete_frame.winfo_ismapped():
+                self.autocomplete_frame.pack(padx=40, fill="x", after=self.member_search)
+        except Exception:
+            pass
 
     def hide_autocomplete(self):
-        """Hide the dropdown"""
-        self.autocomplete_frame.pack_forget()
+        """Hide the dropdown safely"""
+        try:
+            if self.autocomplete_frame.winfo_ismapped():
+                self.autocomplete_frame.pack_forget()
+        except Exception:
+            pass
 
     def select_member(self, member):
         """Mark member as selected"""
-        self.selected_member_id = member['id']
-        self.member_data = member
-        display = f"Terpilih: {member['name']} ({member.get('nrp', '-')})"
-        self.selected_member_label.configure(text=display, text_color="#4ade80")
-        self.member_search.delete(0, "end")
-        self.member_search.insert(0, member['name'])
-        self.hide_autocomplete()
+        try:
+            self.selected_member_id = member['id']
+            self.member_data = member
+            display = f"Terpilih: {member['name']} ({member.get('nrp', '-')})"
+            self.selected_member_label.configure(text=display, text_color="#4ade80")
+            self.member_search.delete(0, "end")
+            self.member_search.insert(0, member['name'])
+            self.hide_autocomplete()
+        except Exception:
+            pass
     
     def update_total(self, event=None):
         """Update total price display"""
         try:
-            qty_str = self.qty_entry.get().strip()
-            qty = int(qty_str) if qty_str else 0
+            qty_raw = clean_numeric(self.qty_entry.get())
+            qty = int(qty_raw) if qty_raw else 0
             total = qty * self.item['sell_price']
             self.total_label.configure(text=f"Total: Rp {total:,.0f}")
-        except ValueError:
+        except Exception:
             pass
     
     def sell(self):
@@ -1041,9 +1061,9 @@ class SellDialog(ctk.CTkToplevel):
                 return
         
         try:
-            qty = int(self.qty_entry.get())
-        except ValueError:
-            messagebox.showerror("Error", "Jumlah harus berupa angka!")
+            qty = int(clean_numeric(self.qty_entry.get()))
+        except (ValueError, TypeError):
+            messagebox.showerror("Error", "Jumlah harus berupa angka valid!")
             return
             
         if qty <= 0:
@@ -1154,9 +1174,9 @@ class ReturDialog(ctk.CTkToplevel):
     def confirm_retur(self):
         """Process the return"""
         try:
-            qty = int(self.qty_entry.get())
-        except ValueError:
-            messagebox.showerror("Error", "Jumlah harus berupa angka!")
+            qty = int(clean_numeric(self.qty_entry.get()))
+        except (ValueError, TypeError):
+            messagebox.showerror("Error", "Jumlah harus berupa angka valid!")
             return
             
         reason = self.reason_text.get("1.0", "end-1c").strip()

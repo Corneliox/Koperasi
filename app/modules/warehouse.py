@@ -400,6 +400,7 @@ class WarehouseManager:
         finally:
             conn.close()
     
+    @handle_db_errors
     def retur_barang(self, item_id: int, qty: int, reason: str) -> dict:
         """
         Return item - decreases stock (returns to supplier/disposal)
@@ -441,11 +442,12 @@ class WarehouseManager:
         )
         
         return {
-            "success": True,
+            "success": True, 
             "message": "Retur berhasil dicatat",
             "remaining_stock": new_stock
         }
     
+    @handle_db_errors
     def return_item(self, item_id: int, qty: int, reason: str) -> dict:
         """Alias for retur_barang to match UI expectations"""
         return self.retur_barang(item_id, qty, reason)

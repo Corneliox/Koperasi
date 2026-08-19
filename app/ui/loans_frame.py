@@ -7,6 +7,7 @@ from tkinter import messagebox
 from datetime import datetime
 from app.modules.loans import LoanManager
 from app.modules.members import MemberManager
+from app.utils.error_handler import clean_numeric
 
 class LoansFrame(ctk.CTkFrame):
     def __init__(self, master, current_user: str):
@@ -276,10 +277,15 @@ class LoansFrame(ctk.CTkFrame):
         dialog.protocol("WM_DELETE_WINDOW", lambda: self.close_window(window_key))
     
     def close_window(self, window_key: str):
-        """Close window"""
+        """Close window safely"""
         if window_key in self.active_windows:
-            self.active_windows[window_key].destroy()
+            win = self.active_windows[window_key]
             del self.active_windows[window_key]
+            try:
+                if win and win.winfo_exists():
+                    win.destroy()
+            except Exception:
+                pass
     
     def on_loan_saved(self, data: dict):
         """Handle loan save with stay or close option"""
@@ -399,14 +405,15 @@ class LoanSimulationDialog(ctk.CTkToplevel):
     def calculate(self):
         """Calculate loan simulation"""
         try:
-            # Robust integer parsing
-            amount_str = ''.join(filter(str.isdigit, self.amount_entry.get()))
-            amount = float(amount_str) if amount_str else 0
-            
-            interest = float(self.interest_entry.get())
-            duration = int(self.duration_entry.get())
-        except ValueError:
+            amount = clean_numeric(self.amount_entry.get())
+            interest = clean_numeric(self.interest_entry.get())
+            duration = int(clean_numeric(self.duration_entry.get()))
+        except (ValueError, TypeError):
             messagebox.showerror("Error", "Masukkan angka yang valid!")
+            return
+        
+        if amount <= 0 or duration <= 0:
+            messagebox.showerror("Error", "Jumlah dan durasi pinjaman harus lebih dari 0!")
             return
         
         result = self.loan_manager.simulate_loan(amount, interest, duration)
@@ -639,12 +646,9 @@ class NewLoanDialog(ctk.CTkToplevel):
     def update_preview(self):
         """Update loan preview calculation"""
         try:
-            # Robust integer parsing
-            amount_str = ''.join(filter(str.isdigit, self.amount_entry.get()))
-            amount = float(amount_str) if amount_str else 0
-            
-            interest = float(self.interest_entry.get() or 0)
-            duration = int(self.duration_entry.get() or 0)
+            amount = clean_numeric(self.amount_entry.get())
+            interest = clean_numeric(self.interest_entry.get())
+            duration = int(clean_numeric(self.duration_entry.get()))
             
             result = self.loan_manager.simulate_loan(amount, interest, duration)
             
@@ -677,12 +681,10 @@ class NewLoanDialog(ctk.CTkToplevel):
         member_id = self.member_map.get(member_display)
         
         try:
-            amount_str = ''.join(filter(str.isdigit, self.amount_entry.get()))
-            amount = float(amount_str) if amount_str else 0
-            
-            interest = float(self.interest_entry.get() or 0)
-            duration = int(self.duration_entry.get() or 0)
-        except ValueError:
+            amount = clean_numeric(self.amount_entry.get())
+            interest = clean_numeric(self.interest_entry.get())
+            duration = int(clean_numeric(self.duration_entry.get()))
+        except (ValueError, TypeError):
             if not is_quitting:
                 messagebox.showerror("Error", "Masukkan angka yang valid!")
             return
@@ -847,20 +849,15 @@ class LoanPaymentDialog(ctk.CTkToplevel):
             is_quitting = False
 
         try:
-            amount_str = self.amount_entry.get().replace(',', '').replace('.', '')
-            if not amount_str:
-                if not is_quitting:
-                    messagebox.showerror("Data Tidak Lengkap", "Jumlah bayar wajib diisi!")
-                return
-            amount = float(amount_str)
-        except ValueError:
+            amount = clean_numeric(self.amount_entry.get())
+        except (ValueError, TypeError):
             if not is_quitting:
                 messagebox.showerror("Error", "Masukkan jumlah yang valid!")
             return
         
         if amount <= 0:
             if not is_quitting:
-                messagebox.showerror("Error", "Jumlah harus lebih dari 0!")
+                messagebox.showerror("Error", "Jumlah pembayaran harus lebih dari 0!")
             return
         
         method = self.method_var.get()
