@@ -1,0 +1,135 @@
+name: Build & Release Windows 10/11
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag (e.g. v4.2)'
+        required: true
+        default: 'v4.2'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Executable & Inno Setup Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12 (x64)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build Standalone Executable with PyInstaller
+        run: |
+          python -m PyInstaller KoperasiBrimob.spec
+
+      - name: Verify Executable Output
+        shell: pwsh
+        run: |
+          if (Test-Path "dist/KoperasiBrimob.exe") {
+            $size = [math]::Round((Get-Item "dist/KoperasiBrimob.exe").Length / 1MB, 2)
+            Write-Host "SUCCESS: dist/KoperasiBrimob.exe built successfully ($size MB)"
+          } else {
+            Write-Error "ERROR: dist/KoperasiBrimob.exe was not created!"
+            exit 1
+          }
+
+      - name: Install Inno Setup
+        uses: jurplel/install-inno-setup@v2
+        with:
+          version: '6.2.2'
+
+      - name: Compile Inno Setup Installer
+        run: |
+          iscc setup.iss
+
+      - name: Verify Installer Output
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem -Path . -Filter "KoperasiBrimob_Setup_*.exe"
+          if ($installers.Count -gt 0) {
+            foreach ($inst in $installers) {
+              $size = [math]::Round($inst.Length / 1MB, 2)
+              Write-Host "SUCCESS: Installer created -> $($inst.Name) ($size MB)"
+            }
+          } else {
+            Write-Error "ERROR: Installer executable was not created!"
+            exit 1
+          }
+
+      - name: Generate SHA256 Checksums
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path . -Filter "KoperasiBrimob_Setup_*.exe") + @(Get-Item -Path "dist/KoperasiBrimob.exe")
+          $checksums = foreach ($file in $files) {
+            $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
+            "$hash  $($file.Name)"
+          }
+          $checksums | Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
+          Write-Host "SHA256 Checksums generated:"
+          Get-Content "SHA256SUMS.txt"
+
+      - name: Determine Release Tag
+        id: get_tag
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $tag = $env:GITHUB_REF -replace "refs/tags/", ""
+          } elseif ("${{ inputs.release_tag }}" -ne "") {
+            $tag = "${{ inputs.release_tag }}"
+          } else {
+            $tag = "v4.2"
+          }
+          Write-Host "Target Tag: $tag"
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_tag.outputs.tag }}
+          name: "Koperasi Brimob ${{ steps.get_tag.outputs.tag }} (Windows 10/11 64-bit)"
+          draft: false
+          prerelease: false
+          files: |
+            KoperasiBrimob_Setup_*.exe
+            dist/KoperasiBrimob.exe
+            SHA256SUMS.txt
+          body: |
+            ## 🏛️ Koperasi Brimob Release ${{ steps.get_tag.outputs.tag }}
+            ### 💻 Khusus Sistem Operasi Windows 10 / Windows 11 (64-Bit)
+            
+            Versi ini menghadirkan perbaikan menyeluruh terhadap stabilitas, integritas data, dan pencegahan crash saat input data.
+
+            ---
+
+            ### 🚀 Apa yang Baru di Versi Ini:
+            - **🛡️ Stabilitas Penuh & Mitigasi Crash**: Form input data diperkuat dengan sanitasi angka cerdas (`clean_numeric`) serta isolasi exception pada fitur pencarian dan autocomplete.
+            - **⚡ Konkurensi Database Tinggi**: Mengaktifkan mode SQLite WAL (*Write-Ahead Logging*) dan `busy_timeout` untuk mencegah *database lock* saat multi-tasking kasir.
+            - **🧾 Format Transaksi & Struk Presisi**: Format struk belanja dan invoice PDF telah disinkronkan dan mendukung transaksi multi-item maupun single-item.
+            - **📊 Akurasi Laporan Keuangan**: Pemisahan pokok pinjaman dan pendapatan bunga pinjaman pada laporan neraca laba-rugi.
+            - **💻 Optimal untuk Windows 10 & 11 64-bit**: Dikompilasi secara native untuk performa maksimal pada arsitektur Windows 10 / 11 modern.
+
+            ---
+
+            ### 📦 File Unduhan:
+            1. **Installer Setup (Disarankan)**: `KoperasiBrimob_Setup_v4.2.exe` (Instalasi otomatis + Desktop Shortcut).
+            2. **Standalone Portable**: `KoperasiBrimob.exe` (Jalankan langsung tanpa instalasi).
+            3. **Checksum Integritas**: `SHA256SUMS.txt`

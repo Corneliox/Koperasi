@@ -103,7 +103,7 @@ from app.ui.admin_panel import AuditLogViewer, DangerResetModal
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-APP_VERSION = "4.1"
+APP_VERSION = "4.2"
 
 
 class KoperasiBrimobApp(ctk.CTk):
@@ -401,12 +401,12 @@ class KoperasiBrimobApp(ctk.CTk):
         """Show what's new in this version"""
         notes = (
             f"🚀 BERHASIL DIPERBARUI KE VERSI {new_ver}!\n\n"
-            "Apa yang baru di versi ini:\n"
-            "✅ Optimasi Kompatibilitas Windows 7 (Stabilitas Tinggi)\n"
-            "✅ Penyatuan Dialog Sukses (Bebas Double Verification)\n"
-            "✅ Sistem Deferred UI Refresh (Mencegah Aplikasi Hang)\n"
-            "✅ Perbaikan Navigasi & Fokus Jendela pada Mesin Klien\n"
-            "✅ Update di Modul Produk, Anggota, dan Pinjaman\n\n"
+            "Apa yang baru di versi 4.2 (Khusus Windows 10 & 11 64-bit):\n"
+            "✅ Stabilitas Penuh: Mitigasi crash saat input data & validasi angka cerdas\n"
+            "✅ Konkurensi Database: Mode SQLite WAL untuk transaksi multi-thread lancar\n"
+            "✅ Perbaikan Transaksi & Struk: Format cetak POS lengkap & sinkron\n"
+            "✅ Akurasi Finansial: Pemisahan pokok & bunga pinjaman pada laporan neraca\n"
+            "✅ Optimasi UI Windows 10/11: Performa rendering lebih cepat & bebas memory leak\n\n"
             "Terima kasih telah menggunakan Koperasi Brimob."
         )
         tkinter.messagebox.showinfo(f"Update Berhasil (v{old_ver} -> v{new_ver})", notes)
