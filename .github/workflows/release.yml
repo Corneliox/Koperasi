@@ -2,6 +2,8 @@ name: Build & Release Windows 10/11
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
