@@ -55,13 +55,22 @@ jobs:
           }
 
       - name: Install Inno Setup
-        uses: jurplel/install-inno-setup@v2
-        with:
-          version: '6.2.2'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Compile Inno Setup Installer
+        shell: pwsh
         run: |
-          iscc setup.iss
+          if (Get-Command iscc.exe -ErrorAction SilentlyContinue) {
+            iscc.exe setup.iss
+          } elseif (Test-Path "C:\Program Files (x86)\Inno Setup 6\iscc.exe") {
+            & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" setup.iss
+          } else {
+            Write-Error "iscc.exe not found!"
+            exit 1
+          }
 
       - name: Verify Installer Output
         shell: pwsh
