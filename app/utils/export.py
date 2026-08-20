@@ -7,10 +7,20 @@ import pandas as pd
 from fpdf import FPDF
 
 
+def get_excel_col_letter(col_idx: int) -> str:
+    """Convert 0-indexed column integer to Excel column letter (0->A, 25->Z, 26->AA)"""
+    result = ""
+    col_idx += 1
+    while col_idx > 0:
+        col_idx, remainder = divmod(col_idx - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
 def export_to_excel(data: list, columns: dict, filename: str, 
                     sheet_name: str = "Data", output_dir: str = None) -> str:
     """
-    Export data to Excel file
+    Export data to Excel file safely
     :param data: List of dictionaries
     :param columns: Dict mapping data keys to column headers
     :param filename: Output filename (without extension)
@@ -25,13 +35,16 @@ def export_to_excel(data: list, columns: dict, filename: str,
     
     # Create DataFrame with selected columns
     df_data = []
-    for row in data:
-        df_row = {}
-        for key, header in columns.items():
-            df_row[header] = row.get(key, "")
-        df_data.append(df_row)
-    
-    df = pd.DataFrame(df_data)
+    if data:
+        for row in data:
+            df_row = {}
+            for key, header in columns.items():
+                df_row[header] = row.get(key, "")
+            df_data.append(df_row)
+        df = pd.DataFrame(df_data)
+    else:
+        # Create empty DataFrame with proper column headers
+        df = pd.DataFrame(columns=list(columns.values()))
     
     # Generate unique filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -44,7 +57,7 @@ def export_to_excel(data: list, columns: dict, filename: str,
         
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
-        last_row = len(df) + 1
+        last_row = max(1, len(df) + 1)
         
         # Header format
         header_format = workbook.add_format({
@@ -56,20 +69,6 @@ def export_to_excel(data: list, columns: dict, filename: str,
             'valign': 'vcenter'
         })
         
-        # Cell format
-        cell_format = workbook.add_format({
-            'border': 1,
-            'align': 'left',
-            'valign': 'vcenter'
-        })
-        
-        # Number format
-        number_format = workbook.add_format({
-            'border': 1,
-            'num_format': '#,##0',
-            'align': 'right'
-        })
-
         # Total format
         total_format = workbook.add_format({
             'bold': True,
@@ -84,16 +83,17 @@ def export_to_excel(data: list, columns: dict, filename: str,
             worksheet.write(0, col_num, header, header_format)
             worksheet.set_column(col_num, col_num, 20)
             
-            # Add TOTAL row at the end if it's a numeric column
-            col_name = df.columns[col_num]
-            if col_num == 0:
-                worksheet.write(last_row, col_num, "TOTAL", total_format)
-            elif col_name in ['Jumlah', 'Total', 'Profit', 'Laba', 'Harga aset']:
-                sum_formula = f"=SUM({chr(65+col_num)}2:{chr(65+col_num)}{last_row})"
-                worksheet.write_formula(last_row, col_num, sum_formula, total_format)
-            else:
-                # Just draw the border for empty total cells
-                worksheet.write(last_row, col_num, "", total_format)
+            # Add TOTAL row at the end if it's a numeric column and we have data
+            if len(df) > 0:
+                col_name = df.columns[col_num]
+                col_letter = get_excel_col_letter(col_num)
+                if col_num == 0:
+                    worksheet.write(last_row, col_num, "TOTAL", total_format)
+                elif col_name in ['Jumlah', 'Total', 'Profit', 'Laba', 'Harga aset']:
+                    sum_formula = f"=SUM({col_letter}2:{col_letter}{last_row})"
+                    worksheet.write_formula(last_row, col_num, sum_formula, total_format)
+                else:
+                    worksheet.write(last_row, col_num, "", total_format)
         
         # Freeze header row
         worksheet.freeze_panes(1, 0)
@@ -105,11 +105,15 @@ def export_transactions_excel(transactions: list, filename: str = "Laporan_Trans
                               output_dir: str = None) -> str:
     """Export transactions to Excel with ID, Nama, Tanggal order and Profit"""
     processed = []
-    for t in transactions:
+    for t in (transactions or []):
         row = dict(t)
-        # Calculate profit: (Sell - Est Buy) * Qty
-        unit_price = t.get('unit_price', 0)
-        qty = t.get('qty', 0)
+        try:
+            unit_price = float(t.get('unit_price') or 0)
+            qty = float(t.get('qty') or 0)
+        except (ValueError, TypeError):
+            unit_price = 0.0
+            qty = 0.0
+            
         estimated_buy = unit_price * 0.85
         row['profit'] = (unit_price - estimated_buy) * qty
         processed.append(row)
@@ -132,11 +136,20 @@ def export_inventory_excel(items: list, filename: str = "Laporan_Inventaris",
                            output_dir: str = None) -> str:
     """Export inventory to Excel with full headers and calculations"""
     processed_items = []
-    for item in items:
+    for item in (items or []):
         processed = dict(item)
-        processed['laba'] = item['sell_price'] - item['buy_price']
+        try:
+            sell_price = float(item.get('sell_price') or 0)
+            buy_price = float(item.get('buy_price') or 0)
+            stock = float(item.get('stock') or 0)
+        except (ValueError, TypeError):
+            sell_price = 0.0
+            buy_price = 0.0
+            stock = 0.0
+            
+        processed['laba'] = sell_price - buy_price
         processed['status_aktif'] = "Ya" if item.get('is_active', 1) else "Tidak"
-        processed['harga_aset'] = item['sell_price'] * item['stock']
+        processed['harga_aset'] = sell_price * stock
         processed_items.append(processed)
 
     columns = {
@@ -189,7 +202,10 @@ class PDFReport(FPDF):
         self.cell(0, 10, f'Halaman {self.page_no()}/{{nb}}', align='C')
     
     def add_table(self, headers: list, data: list, col_widths: list = None):
-        """Add a table to the PDF"""
+        """Add a table to the PDF safely"""
+        if not headers:
+            return
+            
         if col_widths is None:
             col_widths = [self.epw / len(headers)] * len(headers)
         
@@ -199,7 +215,7 @@ class PDFReport(FPDF):
         self.set_text_color(255, 255, 255)
         
         for i, header in enumerate(headers):
-            self.cell(col_widths[i], 8, header, border=1, align='C', fill=True)
+            self.cell(col_widths[i], 8, str(header), border=1, align='C', fill=True)
         self.ln()
         
         # Data rows
@@ -222,7 +238,7 @@ class PDFReport(FPDF):
 def export_transactions_pdf(transactions: list, title: str = "Laporan Transaksi",
                             filename: str = "Laporan_Transaksi",
                             output_dir: str = None) -> str:
-    """Export transactions to PDF"""
+    """Export transactions to PDF with safe numeric conversions"""
     if output_dir is None:
         output_dir = os.path.join(os.path.expanduser("~"), "Documents", "Koperasi_Export")
     
@@ -236,20 +252,26 @@ def export_transactions_pdf(transactions: list, title: str = "Laporan Transaksi"
     col_widths = [35, 55, 20, 35, 45]
     
     data = []
-    for t in transactions:
-        date_str = t.get('date', '')[:10] if t.get('date') else ''
+    total = 0.0
+    for t in (transactions or []):
+        date_str = str(t.get('date', ''))[:10] if t.get('date') else ''
+        try:
+            total_price = float(t.get('total_price') or 0)
+        except (ValueError, TypeError):
+            total_price = 0.0
+        total += total_price
+        
         data.append([
             date_str,
             str(t.get('item_name', ''))[:25],
             str(t.get('qty', '')),
-            f"Rp {t.get('total_price', 0):,.0f}",
+            f"Rp {total_price:,.0f}",
             str(t.get('member_name', '-'))[:20]
         ])
     
     pdf.add_table(headers, data, col_widths)
     
     # Summary
-    total = sum(t.get('total_price', 0) for t in transactions)
     pdf.ln(10)
     pdf.set_font('Helvetica', 'B', 11)
     pdf.cell(0, 10, f"Total: Rp {total:,.0f}", align='R')
@@ -264,7 +286,7 @@ def export_transactions_pdf(transactions: list, title: str = "Laporan Transaksi"
 
 def export_inventory_pdf(items: list, category: str, filename: str = "Laporan_Inventaris",
                          output_dir: str = None) -> str:
-    """Export inventory to PDF with new columns"""
+    """Export inventory to PDF with safe float calculations and formatting"""
     if output_dir is None:
         output_dir = os.path.join(os.path.expanduser("~"), "Documents", "Koperasi_Export")
     
@@ -279,19 +301,30 @@ def export_inventory_pdf(items: list, category: str, filename: str = "Laporan_In
     col_widths = [10, 20, 45, 15, 25, 25, 25, 25] # Total should be ~190 for A4
     
     data = []
-    total_asset_value = 0
-    for item in items:
-        laba = item['sell_price'] - item['buy_price']
-        aset = item['sell_price'] * item['stock']
+    total_asset_value = 0.0
+    for item in (items or []):
+        try:
+            sell_price = float(item.get('sell_price') or 0)
+            buy_price = float(item.get('buy_price') or 0)
+            stock = float(item.get('stock') or 0)
+        except (ValueError, TypeError):
+            sell_price = 0.0
+            buy_price = 0.0
+            stock = 0.0
+            
+        laba = sell_price - buy_price
+        aset = sell_price * stock
         total_asset_value += aset
+        
+        stock_str = f"{int(stock)}" if stock.is_integer() else f"{stock:,.1f}"
         
         data.append([
             str(item.get('id', '')),
             str(item.get('item_code', '-'))[:10],
             str(item.get('name', ''))[:20],
-            str(item.get('stock', '')),
-            f"{item.get('buy_price', 0):,.0f}",
-            f"{item.get('sell_price', 0):,.0f}",
+            stock_str,
+            f"{buy_price:,.0f}",
+            f"{sell_price:,.0f}",
             f"{laba:,.0f}",
             f"{aset:,.0f}"
         ])

@@ -197,18 +197,22 @@ class MembersFrame(ctk.CTkFrame):
     def search_members(self):
         """Search members safely"""
         try:
+            if not self.winfo_exists():
+                return
             search = self.search_entry.get().strip()
             self.load_data(search if search else None)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in search_members: {e}")
     
     def refresh_data(self):
         """Refresh table"""
         try:
+            if not self.winfo_exists():
+                return
             self.search_entry.delete(0, "end")
             self.load_data()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in refresh_data: {e}")
     
     def open_purchase_dialog(self, member: dict):
         """Open purchase dialog for a member"""
@@ -480,11 +484,20 @@ class MemberDialog(ctk.CTkToplevel):
     
     def check_duplicate_name(self, event=None):
         """Check for duplicate/similar names (fuzzy search)"""
-        name = self.name_entry.get().strip()
-        nrp = self.nrp_entry.get().strip()
+        try:
+            if not self.winfo_exists():
+                return
+            name = self.name_entry.get().strip()
+            nrp = self.nrp_entry.get().strip()
+        except Exception:
+            return
         
         if not name or len(name) < 3 or not self.member_manager:
-            self.warning_frame.pack_forget()
+            try:
+                if self.winfo_exists():
+                    self.warning_frame.pack_forget()
+            except Exception:
+                pass
             return
         
         result = self.member_manager.check_duplicate_before_create(name, nrp)
@@ -915,6 +928,13 @@ class MemberPurchaseDialog(ctk.CTkToplevel):
             if res['success']:
                 success_items.extend(res['items'])
                 total_billed += res['total']
+                # Immediately remove processed Sembako items from cart to prevent duplicate checkout on retry
+                self.cart = {k: v for k, v in self.cart.items() if v['category'] != "SEMBAKO"}
+                try:
+                    if self.winfo_exists():
+                        self.update_cart_display()
+                except Exception:
+                    pass
             else:
                 if not is_quitting: messagebox.showerror("Error Sembako", res['message'])
                 return
@@ -928,6 +948,13 @@ class MemberPurchaseDialog(ctk.CTkToplevel):
                     item['category'] = 'TAKTIKAL'
                 success_items.extend(res['items'])
                 total_billed += res['total']
+                # Immediately remove processed Taktikal items from cart
+                self.cart = {k: v for k, v in self.cart.items() if v['category'] != "TAKTIKAL"}
+                try:
+                    if self.winfo_exists():
+                        self.update_cart_display()
+                except Exception:
+                    pass
             else:
                 if not is_quitting: messagebox.showerror("Error Taktikal", res['message'])
                 return

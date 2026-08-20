@@ -52,17 +52,20 @@ def get_connection():
 
 def init_database():
     """Initialize all database tables and migrate old database if necessary"""
-    # Migration: check if old DB exists in root directory and move it to new location
-    old_db = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "koperasi_brimob.db")
-    if os.path.exists(old_db) and old_db != DB_PATH:
+    # Migration: check if old DB exists in root directory and move it to new location (if not already migrated)
+    dev_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    old_db = os.path.join(dev_root, "koperasi_brimob.db")
+    if os.path.exists(old_db) and os.path.abspath(old_db) != os.path.abspath(DB_PATH):
         try:
             import shutil
-            # If new DB doesn't exist, move old one
             if not os.path.exists(DB_PATH):
                 shutil.copy2(old_db, DB_PATH)
-                # Keep old as backup or rename? Rename to be safe.
-                os.rename(old_db, old_db + ".bak")
                 print(f"Migrated database from {old_db} to {DB_PATH}")
+            if not os.path.exists(old_db + ".bak"):
+                try:
+                    os.rename(old_db, old_db + ".bak")
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Migration failed: {e}")
 
@@ -272,6 +275,12 @@ def init_database():
     """)
     
     # Create indexes for better performance
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_warehouse_category ON warehouse(category_type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mutation_item ON warehouse_mutation(item_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_loans_member ON loans(member_id)")
+
     # Ensure users table has security and legacy recovery columns
     try:
         cursor.execute("PRAGMA table_info(users)")
@@ -289,6 +298,14 @@ def init_database():
 
     conn.commit()
     conn.close()
+    
+    # Initialize audit log table safely
+    try:
+        from app.utils.audit_log import init_audit_log_table
+        init_audit_log_table()
+    except Exception as e:
+        print(f"Audit log init notice: {e}")
+        
     print(f"Database initialized at: {DB_PATH}")
 
 
@@ -315,11 +332,13 @@ def has_registered_users() -> bool:
     """Check if at least one user account exists in the database"""
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM users")
-        count = cursor.fetchone()[0]
-        conn.close()
-        return count > 0
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM users")
+            count = cursor.fetchone()[0]
+            return count > 0
+        finally:
+            conn.close()
     except Exception:
         return False
 
@@ -540,13 +559,15 @@ def log_activity(user: str, action_type: str, details: str):
     """Log an activity to the activity_logs table"""
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO activity_logs (user, action_type, details) VALUES (?, ?, ?)",
-            (user, action_type, details)
-        )
-        conn.commit()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO activity_logs (user, action_type, details) VALUES (?, ?, ?)",
+                (user, action_type, details)
+            )
+            conn.commit()
+        finally:
+            conn.close()
     except Exception:
         pass
 

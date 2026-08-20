@@ -127,7 +127,7 @@ def import_inventory_from_excel(filepath: str, category_context: str,
                 df = pd.read_excel(filepath, sheet_name=sheet_name, skiprows=3, engine='openpyxl')
             else:
                 df = pd.read_excel(filepath, skiprows=3, engine='openpyxl')
-        except:
+        except Exception:
             # Fallback: try reading without skipping
             if sheet_name:
                 df = pd.read_excel(filepath, sheet_name=sheet_name, engine='openpyxl')
@@ -174,98 +174,100 @@ def import_inventory_from_excel(filepath: str, category_context: str,
         
         # Process data
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        added = 0
-        updated = 0
-        errors = []
-        
-        for idx, row in df.iterrows():
-            try:
-                name = str(row.get(col_name, '')).strip()
-                if not name or name == 'nan' or pd.isna(row.get(col_name)):
-                    continue
-                
-                # Get values with defaults
-                start_stock = int(row.get(col_start, 0) or 0) if col_start else 0
-                stock_in = int(row.get(col_in, 0) or 0) if col_in else 0
-                stock_out = int(row.get(col_out, 0) or 0) if col_out else 0
-                
-                # Calculate end stock using business logic
-                # End Stock = Start Stock + IN - OUT (returns are subtracted from IN)
-                if col_end:
-                    end_stock = int(row.get(col_end, 0) or 0)
-                else:
-                    end_stock = start_stock + stock_in - stock_out
-                
-                buy_price = float(row.get(col_buy, 0) or 0) if col_buy else 0
-                sell_price = float(row.get(col_sell, 0) or 0) if col_sell else 0
-                
-                status = str(row.get(col_status, 'Koperasi') or 'Koperasi').strip() if col_status else 'Koperasi'
-                if status not in ['Koperasi', 'Konsinyasi']:
-                    status = 'Koperasi'
-                
-                # Calculate business values
-                item_profit = sell_price - buy_price
-                total_profit = item_profit * stock_out
-                asset = sell_price * end_stock
-                
-                # Check if item exists
-                cursor.execute(
-                    "SELECT id, stock FROM warehouse WHERE name = ? AND category_type = ?",
-                    (name, category_context)
-                )
-                existing = cursor.fetchone()
-                
-                if existing:
-                    # Update existing item
-                    old_stock = existing['stock']
+        try:
+            cursor = conn.cursor()
+            
+            added = 0
+            updated = 0
+            errors = []
+            
+            for idx, row in df.iterrows():
+                try:
+                    name = str(row.get(col_name, '')).strip()
+                    if not name or name == 'nan' or pd.isna(row.get(col_name)):
+                        continue
+                    
+                    # Get values with defaults
+                    start_stock = int(row.get(col_start, 0) or 0) if col_start else 0
+                    stock_in = int(row.get(col_in, 0) or 0) if col_in else 0
+                    stock_out = int(row.get(col_out, 0) or 0) if col_out else 0
+                    
+                    # Calculate end stock using business logic
+                    # End Stock = Start Stock + IN - OUT (returns are subtracted from IN)
+                    if col_end:
+                        end_stock = int(row.get(col_end, 0) or 0)
+                    else:
+                        end_stock = start_stock + stock_in - stock_out
+                    
+                    buy_price = float(row.get(col_buy, 0) or 0) if col_buy else 0
+                    sell_price = float(row.get(col_sell, 0) or 0) if col_sell else 0
+                    
+                    status = str(row.get(col_status, 'Koperasi') or 'Koperasi').strip() if col_status else 'Koperasi'
+                    if status not in ['Koperasi', 'Konsinyasi']:
+                        status = 'Koperasi'
+                    
+                    # Calculate business values
+                    item_profit = sell_price - buy_price
+                    total_profit = item_profit * stock_out
+                    asset = sell_price * end_stock
+                    
+                    # Check if item exists
                     cursor.execute(
-                        """UPDATE warehouse 
-                           SET stock=?, buy_price=?, sell_price=?, status=?, 
-                               updated_at=CURRENT_TIMESTAMP
-                           WHERE id=?""",
-                        (end_stock, buy_price, sell_price, status, existing['id'])
+                        "SELECT id, stock FROM warehouse WHERE name = ? AND category_type = ?",
+                        (name, category_context)
                     )
+                    existing = cursor.fetchone()
                     
-                    # Create mutation if stock changed
-                    stock_diff = end_stock - old_stock
-                    if stock_diff != 0:
-                        mutation_type = 'IN' if stock_diff > 0 else 'OUT'
+                    if existing:
+                        # Update existing item
+                        old_stock = existing['stock']
                         cursor.execute(
-                            """INSERT INTO warehouse_mutation (item_id, type, qty, description)
-                               VALUES (?, ?, ?, ?)""",
-                            (existing['id'], mutation_type, abs(stock_diff), 
-                             f"Import Excel: {month_year}")
+                            """UPDATE warehouse 
+                               SET stock=?, buy_price=?, sell_price=?, status=?, 
+                                   updated_at=CURRENT_TIMESTAMP
+                               WHERE id=?""",
+                            (end_stock, buy_price, sell_price, status, existing['id'])
                         )
-                    
-                    updated += 1
-                else:
-                    # Insert new item
-                    cursor.execute(
-                        """INSERT INTO warehouse 
-                           (name, category_type, stock, buy_price, sell_price, status, description)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        (name, category_context, end_stock, buy_price, sell_price, status,
-                         f"Import: {month_year}")
-                    )
-                    item_id = cursor.lastrowid
-                    
-                    # Create initial mutation
-                    if end_stock > 0:
+                        
+                        # Create mutation if stock changed
+                        stock_diff = end_stock - old_stock
+                        if stock_diff != 0:
+                            mutation_type = 'IN' if stock_diff > 0 else 'OUT'
+                            cursor.execute(
+                                """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                                   VALUES (?, ?, ?, ?)""",
+                                (existing['id'], mutation_type, abs(stock_diff), 
+                                 f"Import Excel: {month_year}")
+                            )
+                        
+                        updated += 1
+                    else:
+                        # Insert new item
                         cursor.execute(
-                            """INSERT INTO warehouse_mutation (item_id, type, qty, description)
-                               VALUES (?, 'IN', ?, ?)""",
-                            (item_id, end_stock, f"Import Excel: {month_year}")
+                            """INSERT INTO warehouse 
+                               (name, category_type, stock, buy_price, sell_price, status, description)
+                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                            (name, category_context, end_stock, buy_price, sell_price, status,
+                             f"Import: {month_year}")
                         )
-                    
-                    added += 1
-                    
-            except Exception as e:
-                errors.append(f"Baris {idx + 5}: {str(e)}")
-        
-        conn.commit()
-        conn.close()
+                        item_id = cursor.lastrowid
+                        
+                        # Create initial mutation
+                        if end_stock > 0:
+                            cursor.execute(
+                                """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                                   VALUES (?, 'IN', ?, ?)""",
+                                (item_id, end_stock, f"Import Excel: {month_year}")
+                            )
+                        
+                        added += 1
+                        
+                except Exception as e:
+                    errors.append(f"Baris {idx + 5}: {str(e)}")
+            
+            conn.commit()
+        finally:
+            conn.close()
         
         # Log activity
         log_activity(
@@ -316,73 +318,74 @@ def export_monthly_stock_report(category_context: str, month: int, year: int,
     os.makedirs(output_dir, exist_ok=True)
     
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Get all items for this category
-    cursor.execute(
-        "SELECT * FROM warehouse WHERE category_type = ? ORDER BY name",
-        (category_context,)
-    )
-    items = [dict(row) for row in cursor.fetchall()]
-    
-    # Get mutations for the month
-    month_start = f"{year}-{month:02d}-01"
-    month_end = f"{year}-{month:02d}-{calendar.monthrange(year, month)[1]}"
-    
-    # Prepare data
-    data = []
-    total_profit = 0
-    total_asset = 0
-    
-    for idx, item in enumerate(items):
-        # Get mutations for this item in this month
+    try:
+        cursor = conn.cursor()
+        
+        # Get all items for this category
         cursor.execute(
-            """SELECT type, SUM(qty) as total_qty 
-               FROM warehouse_mutation 
-               WHERE item_id = ? AND DATE(date) BETWEEN ? AND ?
-               GROUP BY type""",
-            (item['id'], month_start, month_end)
+            "SELECT * FROM warehouse WHERE category_type = ? ORDER BY name",
+            (category_context,)
         )
-        mutations = {row['type']: row['total_qty'] for row in cursor.fetchall()}
+        items = [dict(row) for row in cursor.fetchall()]
         
-        stock_in = mutations.get('IN', 0)
-        stock_out = mutations.get('OUT', 0)
-        returns = mutations.get('RETURN', 0)
+        # Get mutations for the month
+        month_start = f"{year}-{month:02d}-01"
+        month_end = f"{year}-{month:02d}-{calendar.monthrange(year, month)[1]}"
         
-        # Business logic: Returns subtract from IN
-        effective_in = stock_in - returns
+        # Prepare data
+        data = []
+        total_profit = 0
+        total_asset = 0
         
-        # Current stock is end stock
-        end_stock = item['stock']
-        
-        # Calculate start stock (reverse engineering)
-        start_stock = end_stock - effective_in + stock_out
-        
-        buy_price = item['buy_price']
-        sell_price = item['sell_price']
-        
-        item_profit = sell_price - buy_price
-        row_total_profit = item_profit * stock_out
-        asset = sell_price * end_stock
-        
-        total_profit += row_total_profit
-        total_asset += asset
-        
-        data.append({
-            'NO': idx + 1,
-            'NAME': item['name'],
-            'START STOCK': start_stock,
-            'IN': effective_in,
-            'OUT': stock_out,
-            'END STOCK': end_stock,
-            'BUY PRICE': buy_price,
-            'SELL PRICE': sell_price,
-            'ITEM PROFIT': item_profit,
-            'TOTAL PROFIT': row_total_profit,
-            'ASSET': asset
-        })
-    
-    conn.close()
+        for idx, item in enumerate(items):
+            # Get mutations for this item in this month
+            cursor.execute(
+                """SELECT type, SUM(qty) as total_qty 
+                   FROM warehouse_mutation 
+                   WHERE item_id = ? AND DATE(date) BETWEEN ? AND ?
+                   GROUP BY type""",
+                (item['id'], month_start, month_end)
+            )
+            mutations = {row['type']: row['total_qty'] for row in cursor.fetchall()}
+            
+            stock_in = mutations.get('IN', 0)
+            stock_out = mutations.get('OUT', 0)
+            returns = mutations.get('RETURN', 0)
+            
+            # Business logic: Returns subtract from IN
+            effective_in = stock_in - returns
+            
+            # Current stock is end stock
+            end_stock = item['stock']
+            
+            # Calculate start stock (reverse engineering)
+            start_stock = end_stock - effective_in + stock_out
+            
+            buy_price = item['buy_price']
+            sell_price = item['sell_price']
+            
+            item_profit = sell_price - buy_price
+            row_total_profit = item_profit * stock_out
+            asset = sell_price * end_stock
+            
+            total_profit += row_total_profit
+            total_asset += asset
+            
+            data.append({
+                'NO': idx + 1,
+                'NAME': item['name'],
+                'START STOCK': start_stock,
+                'IN': effective_in,
+                'OUT': stock_out,
+                'END STOCK': end_stock,
+                'BUY PRICE': buy_price,
+                'SELL PRICE': sell_price,
+                'ITEM PROFIT': item_profit,
+                'TOTAL PROFIT': row_total_profit,
+                'ASSET': asset
+            })
+    finally:
+        conn.close()
     
     # Create Excel file
     month_name = calendar.month_name[month]

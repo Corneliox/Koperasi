@@ -438,8 +438,8 @@ class DangerResetModal(ctk.CTkToplevel):
             # Double confirmation
             final = messagebox.askyesno(
                 "🔴 KONFIRMASI TERAKHIR",
-                f"Ketik 'YA' untuk melanjutkan penghapusan.\n\n"
-                f"Ini adalah kesempatan terakhir untuk membatalkan.",
+                "Apakah Anda benar-benar yakin ingin melanjutkan penghapusan permanen ini?\n\n"
+                "Ini adalah kesempatan terakhir untuk membatalkan.",
                 icon='warning'
             )
             
@@ -449,25 +449,24 @@ class DangerResetModal(ctk.CTkToplevel):
     def execute_reset(self, reset_type: str):
         """Execute the reset operation"""
         from app.utils.audit_log import log_audit
-        
         conn = get_connection()
-        cursor = conn.cursor()
-        
         try:
+            cursor = conn.cursor()
+            
             if reset_type == "SEMBAKO":
-                # Delete Sembako data
+                # Delete Sembako data in correct FK order
                 cursor.execute("DELETE FROM transactions WHERE category_type = 'SEMBAKO'")
                 cursor.execute("DELETE FROM warehouse_mutation WHERE item_id IN (SELECT id FROM warehouse WHERE category_type = 'SEMBAKO')")
                 cursor.execute("DELETE FROM warehouse WHERE category_type = 'SEMBAKO'")
                 
             elif reset_type == "TAKTIKAL":
-                # Delete Taktikal data
+                # Delete Taktikal data in correct FK order
                 cursor.execute("DELETE FROM transactions WHERE category_type = 'TAKTIKAL'")
                 cursor.execute("DELETE FROM warehouse_mutation WHERE item_id IN (SELECT id FROM warehouse WHERE category_type = 'TAKTIKAL')")
                 cursor.execute("DELETE FROM warehouse WHERE category_type = 'TAKTIKAL'")
                 
             elif reset_type == "ALL":
-                # Delete all data except users and audit logs
+                # Delete all operational data in correct FK dependency order
                 cursor.execute("DELETE FROM transactions")
                 cursor.execute("DELETE FROM warehouse_mutation")
                 cursor.execute("DELETE FROM warehouse")
@@ -482,15 +481,15 @@ class DangerResetModal(ctk.CTkToplevel):
                 self.current_user, "SYSTEM", "RESET",
                 None, None, None,
                 {"reset_type": reset_type},
-                f"DANGER: Data reset executed - {reset_type}"
+                f"DANGER: Data reset executed - {reset_type}",
+                level="DANGER"
             )
             
-            messagebox.showinfo("Reset Selesai", f"Data {reset_type} telah dihapus.")
+            messagebox.showinfo("Reset Berhasil", f"Data {reset_type} telah berhasil di-reset.")
+            self.destroy()
             
             if self.on_reset_complete:
                 self.on_reset_complete()
-            
-            self.destroy()
             
         except Exception as e:
             conn.rollback()

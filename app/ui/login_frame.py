@@ -30,16 +30,25 @@ class ForgotPasswordModal(ctk.CTkToplevel):
         super().__init__(parent)
         self.on_reset_success = on_reset_success
         self.title("🔑 Pemulihan Kata Sandi (Lupa Password)")
-        self.geometry("460x560")
+        self.geometry("460x590")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
         
-        # Center on screen
+        # Center relative to parent or screen
         self.update_idletasks()
-        x = (self.winfo_screenwidth() - 460) // 2
-        y = (self.winfo_screenheight() - 560) // 2
-        self.geometry(f"+{x}+{y}")
+        try:
+            if parent and parent.winfo_exists() and parent.winfo_width() > 100:
+                x = parent.winfo_rootx() + (parent.winfo_width() - 460) // 2
+                y = parent.winfo_rooty() + (parent.winfo_height() - 590) // 2
+            else:
+                x = (self.winfo_screenwidth() - 460) // 2
+                y = (self.winfo_screenheight() - 590) // 2
+        except Exception:
+            x = (self.winfo_screenwidth() - 460) // 2
+            y = (self.winfo_screenheight() - 590) // 2
+            
+        self.geometry(f"+{max(0, x)}+{max(0, y)}")
         
         self.user_info = None
         self.create_widgets()
@@ -57,7 +66,7 @@ class ForgotPasswordModal(ctk.CTkToplevel):
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color="#00d4ff"
         )
-        self.header_label.pack(pady=(20, 5))
+        self.header_label.pack(pady=(15, 3))
         
         self.sub_label = ctk.CTkLabel(
             self.main_frame,
@@ -65,11 +74,11 @@ class ForgotPasswordModal(ctk.CTkToplevel):
             font=ctk.CTkFont(size=11),
             text_color="#888888"
         )
-        self.sub_label.pack(pady=(0, 15))
+        self.sub_label.pack(pady=(0, 10))
         
         # Step 1: Find Username
         self.step1_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.step1_frame.pack(fill="x", padx=25, pady=(0, 10))
+        self.step1_frame.pack(fill="x", padx=20, pady=(0, 8))
         
         self.u_label = ctk.CTkLabel(self.step1_frame, text="Username Akun:", font=ctk.CTkFont(size=12))
         self.u_label.pack(anchor="w")
@@ -80,7 +89,7 @@ class ForgotPasswordModal(ctk.CTkToplevel):
         self.username_entry = ctk.CTkEntry(
             self.u_search_row, 
             width=260, 
-            height=38, 
+            height=36, 
             placeholder_text="Masukkan username Anda"
         )
         self.username_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
@@ -89,7 +98,7 @@ class ForgotPasswordModal(ctk.CTkToplevel):
             self.u_search_row,
             text="Cari Akun",
             width=95,
-            height=38,
+            height=36,
             fg_color="#00d4ff",
             hover_color="#00a8cc",
             text_color="#000000",
@@ -100,7 +109,7 @@ class ForgotPasswordModal(ctk.CTkToplevel):
         
         # Step 2: Verification Frame (Dynamic based on user status)
         self.step2_frame = ctk.CTkFrame(self.main_frame, fg_color="#24243e", corner_radius=10)
-        self.step2_frame.pack(fill="both", expand=True, padx=25, pady=5)
+        self.step2_frame.pack(fill="both", expand=True, padx=20, pady=5)
         
         self.step2_placeholder = ctk.CTkLabel(
             self.step2_frame,
@@ -108,40 +117,43 @@ class ForgotPasswordModal(ctk.CTkToplevel):
             font=ctk.CTkFont(size=12),
             text_color="#888888"
         )
-        self.step2_placeholder.pack(expand=True, pady=40)
+        self.step2_placeholder.pack(expand=True, pady=30)
         
         # Bottom Close Button
         self.close_btn = ctk.CTkButton(
             self.main_frame,
             text="Tutup",
             width=120,
-            height=34,
+            height=32,
             fg_color="#33334d",
             hover_color="#444466",
             command=self.destroy
         )
-        self.close_btn.pack(pady=(10, 15))
+        self.close_btn.pack(pady=(8, 10))
         
         self.username_entry.bind("<Return>", lambda e: self.search_account())
-        self.after(100, lambda: self.username_entry.focus())
+        self.after(100, lambda: self.username_entry.focus() if self.winfo_exists() else None)
         
     def search_account(self):
         """Look up user security status"""
         username = self.username_entry.get().strip()
         if not username:
-            messagebox.showwarning("Perhatian", "Masukkan username terlebih dahulu!", parent=self)
+            messagebox.showwarning("Peringatan", "Silakan ketik username terlebih dahulu!", parent=self)
             return
             
-        res = get_user_security_info(username)
-        if not res['success']:
-            messagebox.showerror("Tidak Ditemukan", res['message'], parent=self)
-            return
-            
-        self.user_info = res
-        self.render_step2()
+        try:
+            info = get_user_security_info(username)
+            if not info['success']:
+                messagebox.showerror("Tidak Ditemukan", info['message'], parent=self)
+                return
+                
+            self.user_info = info
+            self.render_step2()
+        except Exception as e:
+            messagebox.showerror("Error", f"Terjadi kesalahan saat memeriksa akun: {str(e)}", parent=self)
         
     def render_step2(self):
-        """Render step 2 fields based on security options"""
+        """Render step 2 fields based on account type"""
         for w in self.step2_frame.winfo_children():
             w.destroy()
             
@@ -153,48 +165,53 @@ class ForgotPasswordModal(ctk.CTkToplevel):
             # Legacy User Upgrade & Reset View
             info_text = (
                 f"ℹ️ Akun '{username}' terdeteksi dari versi sebelumnya.\n"
-                "Silakan masukkan password lama Anda untuk mengatur password baru dan mengaktifkan pertanyaan keamanan."
+                "Silakan masukkan password lama Anda untuk mengatur password baru dan pertanyaan keamanan."
             )
             ctk.CTkLabel(
                 self.step2_frame,
                 text=info_text,
                 font=ctk.CTkFont(size=11),
                 text_color="#f59e0b",
-                wraplength=360,
+                wraplength=380,
                 justify="left"
-            ).pack(anchor="w", padx=15, pady=(12, 8))
+            ).pack(anchor="w", padx=15, pady=(8, 6))
             
             # Old Password
             ctk.CTkLabel(self.step2_frame, text="Password Lama / Bawaan:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
-            self.old_pw_entry = ctk.CTkEntry(self.step2_frame, height=34, show="•", placeholder_text="Password lama (default: admin123)")
-            self.old_pw_entry.pack(fill="x", padx=15, pady=(2, 8))
+            self.old_pw_entry = ctk.CTkEntry(self.step2_frame, height=32, show="•", placeholder_text="Password lama (default: admin123)")
+            self.old_pw_entry.pack(fill="x", padx=15, pady=(1, 5))
             
             # New Password
-            ctk.CTkLabel(self.step2_frame, text="Password Baru:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
-            self.new_pw_entry = ctk.CTkEntry(self.step2_frame, height=34, show="•", placeholder_text="Minimal 4 karakter")
-            self.new_pw_entry.pack(fill="x", padx=15, pady=(2, 8))
+            ctk.CTkLabel(self.step2_frame, text="Password Baru (Min. 4 Karakter):", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
+            self.new_pw_entry = ctk.CTkEntry(self.step2_frame, height=32, show="•", placeholder_text="Minimal 4 karakter")
+            self.new_pw_entry.pack(fill="x", padx=15, pady=(1, 5))
+            
+            # Confirm New Password
+            ctk.CTkLabel(self.step2_frame, text="Konfirmasi Password Baru:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
+            self.legacy_conf_pw_entry = ctk.CTkEntry(self.step2_frame, height=32, show="•", placeholder_text="Ulangi password baru")
+            self.legacy_conf_pw_entry.pack(fill="x", padx=15, pady=(1, 5))
             
             # Security Question
             ctk.CTkLabel(self.step2_frame, text="Pilih Pertanyaan Keamanan Baru:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
-            self.legacy_q_combo = ctk.CTkComboBox(self.step2_frame, values=SECURITY_QUESTIONS, height=34)
-            self.legacy_q_combo.pack(fill="x", padx=15, pady=(2, 8))
+            self.legacy_q_combo = ctk.CTkComboBox(self.step2_frame, values=SECURITY_QUESTIONS, height=32)
+            self.legacy_q_combo.pack(fill="x", padx=15, pady=(1, 5))
             
             # Security Answer
             ctk.CTkLabel(self.step2_frame, text="Jawaban Pertanyaan:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
-            self.legacy_ans_entry = ctk.CTkEntry(self.step2_frame, height=34, placeholder_text="Jawaban pemulihan Anda")
-            self.legacy_ans_entry.pack(fill="x", padx=15, pady=(2, 8))
+            self.legacy_ans_entry = ctk.CTkEntry(self.step2_frame, height=32, placeholder_text="Jawaban pemulihan Anda")
+            self.legacy_ans_entry.pack(fill="x", padx=15, pady=(1, 6))
             
             # Save Button
             save_btn = ctk.CTkButton(
                 self.step2_frame,
                 text="Simpan & Perbarui Akun",
-                height=38,
+                height=36,
                 fg_color="#22c55e",
                 hover_color="#16a34a",
                 font=ctk.CTkFont(size=13, weight="bold"),
                 command=self.submit_legacy_upgrade
             )
-            save_btn.pack(fill="x", padx=15, pady=(10, 15))
+            save_btn.pack(fill="x", padx=15, pady=(6, 10))
             
         else:
             # Modern Account Recovery with Question or PIN
@@ -203,59 +220,60 @@ class ForgotPasswordModal(ctk.CTkToplevel):
                 text=f"Pertanyaan Keamanan Akun ({username}):",
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color="#00d4ff"
-            ).pack(anchor="w", padx=15, pady=(10, 2))
+            ).pack(anchor="w", padx=15, pady=(8, 2))
             
             q_label = ctk.CTkLabel(
                 self.step2_frame,
                 text=f'"{self.user_info["security_question"]}"',
                 font=ctk.CTkFont(size=12, weight="bold"),
                 text_color="#ffffff",
-                wraplength=360,
+                wraplength=380,
                 justify="left"
             )
-            q_label.pack(anchor="w", padx=15, pady=(0, 8))
+            q_label.pack(anchor="w", padx=15, pady=(0, 6))
             
             # Answer Entry
             ctk.CTkLabel(self.step2_frame, text="Jawaban Anda:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
-            self.ans_entry = ctk.CTkEntry(self.step2_frame, height=34, placeholder_text="Masukkan jawaban keamanan")
-            self.ans_entry.pack(fill="x", padx=15, pady=(2, 6))
+            self.ans_entry = ctk.CTkEntry(self.step2_frame, height=32, placeholder_text="Masukkan jawaban keamanan")
+            self.ans_entry.pack(fill="x", padx=15, pady=(1, 5))
             
             # Optional PIN Entry
             if self.user_info.get('has_pin'):
                 ctk.CTkLabel(self.step2_frame, text="ATAU Masukkan PIN Pemulihan 6-Digit:", font=ctk.CTkFont(size=11, slant="italic")).pack(anchor="w", padx=15)
-                self.pin_entry = ctk.CTkEntry(self.step2_frame, height=34, placeholder_text="Contoh: 123456 (Jika ingat PIN)")
-                self.pin_entry.pack(fill="x", padx=15, pady=(2, 6))
+                self.pin_entry = ctk.CTkEntry(self.step2_frame, height=32, placeholder_text="Contoh: 123456 (Jika ingat PIN)")
+                self.pin_entry.pack(fill="x", padx=15, pady=(1, 5))
             else:
                 self.pin_entry = None
                 
             # New Password Entry
-            ctk.CTkLabel(self.step2_frame, text="Password Baru:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
-            self.new_pw_entry = ctk.CTkEntry(self.step2_frame, height=34, show="•", placeholder_text="Minimal 4 karakter")
-            self.new_pw_entry.pack(fill="x", padx=15, pady=(2, 6))
+            ctk.CTkLabel(self.step2_frame, text="Password Baru (Min. 4 Karakter):", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
+            self.new_pw_entry = ctk.CTkEntry(self.step2_frame, height=32, show="•", placeholder_text="Minimal 4 karakter")
+            self.new_pw_entry.pack(fill="x", padx=15, pady=(1, 5))
             
             # Confirm Password Entry
             ctk.CTkLabel(self.step2_frame, text="Konfirmasi Password Baru:", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=15)
-            self.conf_pw_entry = ctk.CTkEntry(self.step2_frame, height=34, show="•", placeholder_text="Ulangi password baru")
-            self.conf_pw_entry.pack(fill="x", padx=15, pady=(2, 10))
+            self.conf_pw_entry = ctk.CTkEntry(self.step2_frame, height=32, show="•", placeholder_text="Ulangi password baru")
+            self.conf_pw_entry.pack(fill="x", padx=15, pady=(1, 8))
             
             # Submit Button
             submit_btn = ctk.CTkButton(
                 self.step2_frame,
                 text="Reset Password Sekarang",
-                height=38,
+                height=36,
                 fg_color="#00d4ff",
                 hover_color="#00a8cc",
                 text_color="#000000",
                 font=ctk.CTkFont(size=13, weight="bold"),
                 command=self.submit_modern_reset
             )
-            submit_btn.pack(fill="x", padx=15, pady=(5, 15))
+            submit_btn.pack(fill="x", padx=15, pady=(4, 10))
 
     def submit_legacy_upgrade(self):
         """Handle legacy account password extraction and update"""
         username = self.user_info['username']
         old_pw = self.old_pw_entry.get().strip()
         new_pw = self.new_pw_entry.get().strip()
+        conf_pw = self.legacy_conf_pw_entry.get().strip()
         sec_q = self.legacy_q_combo.get()
         sec_ans = self.legacy_ans_entry.get().strip()
         
@@ -263,18 +281,30 @@ class ForgotPasswordModal(ctk.CTkToplevel):
             messagebox.showwarning("Perhatian", "Password lama dan password baru wajib diisi!", parent=self)
             return
             
+        if len(new_pw) < 4:
+            messagebox.showwarning("Perhatian", "Password baru minimal 4 karakter!", parent=self)
+            return
+
+        if new_pw != conf_pw:
+            messagebox.showwarning("Perhatian", "Konfirmasi password baru tidak cocok!", parent=self)
+            return
+            
         if not sec_ans:
             messagebox.showwarning("Perhatian", "Jawaban pertanyaan keamanan wajib diisi!", parent=self)
             return
             
-        res = update_legacy_user_credentials(username, old_pw, new_pw, sec_q, sec_ans)
-        if res['success']:
-            messagebox.showinfo("Berhasil", res['message'], parent=self)
-            if self.on_reset_success:
-                self.on_reset_success(username)
-            self.destroy()
-        else:
-            messagebox.showerror("Gagal", res['message'], parent=self)
+        try:
+            res = update_legacy_user_credentials(username, old_pw, new_pw, sec_q, sec_ans)
+            if res['success']:
+                messagebox.showinfo("Berhasil", res['message'], parent=self)
+                callback = self.on_reset_success
+                self.destroy()
+                if callback:
+                    callback(username)
+            else:
+                messagebox.showerror("Gagal", res['message'], parent=self)
+        except Exception as e:
+            messagebox.showerror("Error", f"Terjadi kesalahan: {str(e)}", parent=self)
 
     def submit_modern_reset(self):
         """Handle modern password reset"""
@@ -291,23 +321,31 @@ class ForgotPasswordModal(ctk.CTkToplevel):
         if not new_pw:
             messagebox.showwarning("Perhatian", "Masukkan password baru!", parent=self)
             return
+
+        if len(new_pw) < 4:
+            messagebox.showwarning("Perhatian", "Password baru minimal 4 karakter!", parent=self)
+            return
             
         if new_pw != conf_pw:
             messagebox.showwarning("Perhatian", "Konfirmasi password baru tidak cocok!", parent=self)
             return
             
-        if pin:
-            res = reset_password_with_pin(username, pin, new_pw)
-        else:
-            res = reset_password_with_security(username, ans, new_pw)
-            
-        if res['success']:
-            messagebox.showinfo("Sukses", res['message'], parent=self)
-            if self.on_reset_success:
-                self.on_reset_success(username)
-            self.destroy()
-        else:
-            messagebox.showerror("Gagal", res['message'], parent=self)
+        try:
+            if pin:
+                res = reset_password_with_pin(username, pin, new_pw)
+            else:
+                res = reset_password_with_security(username, ans, new_pw)
+                
+            if res['success']:
+                messagebox.showinfo("Sukses", res['message'], parent=self)
+                callback = self.on_reset_success
+                self.destroy()
+                if callback:
+                    callback(username)
+            else:
+                messagebox.showerror("Gagal", res['message'], parent=self)
+        except Exception as e:
+            messagebox.showerror("Error", f"Terjadi kesalahan: {str(e)}", parent=self)
 
 
 class LegacySetupModal(ctk.CTkToplevel):
@@ -324,14 +362,33 @@ class LegacySetupModal(ctk.CTkToplevel):
         self.transient(parent)
         self.grab_set()
         
-        # Center
+        # Center relative to parent
         self.update_idletasks()
-        x = (self.winfo_screenwidth() - 450) // 2
-        y = (self.winfo_screenheight() - 510) // 2
-        self.geometry(f"+{x}+{y}")
+        try:
+            if parent and parent.winfo_exists() and parent.winfo_width() > 100:
+                x = parent.winfo_rootx() + (parent.winfo_width() - 450) // 2
+                y = parent.winfo_rooty() + (parent.winfo_height() - 510) // 2
+            else:
+                x = (self.winfo_screenwidth() - 450) // 2
+                y = (self.winfo_screenheight() - 510) // 2
+        except Exception:
+            x = (self.winfo_screenwidth() - 450) // 2
+            y = (self.winfo_screenheight() - 510) // 2
+            
+        self.geometry(f"+{max(0, x)}+{max(0, y)}")
         
+        self.protocol("WM_DELETE_WINDOW", self.on_close_clicked)
         self.create_widgets()
         
+    def on_close_clicked(self):
+        """User clicked window X button"""
+        messagebox.showinfo(
+            "Info Keamanan", 
+            "Pembaruan keamanan akun dibatalkan. Anda dapat mengaturnya kembali saat login berikutnya.",
+            parent=self
+        )
+        self.destroy()
+
     def create_widgets(self):
         container = ctk.CTkFrame(self, fg_color="#1a1a2e", corner_radius=15)
         container.pack(fill="both", expand=True, padx=15, pady=15)
@@ -345,7 +402,7 @@ class LegacySetupModal(ctk.CTkToplevel):
         
         desc = (
             f"Halo {self.username}! Akun Anda berhasil dimigrasikan ke Sistem Koperasi v4.3.\n"
-            "Untuk melindungi data lama Anda dan mengaktifkan fitur Pemulihan Lupa Password, "
+            "Untuk melindungi data Anda dan mengaktifkan fitur Pemulihan Lupa Password, "
             "silakan atur pertanyaan keamanan dan PIN pemulihan Anda."
         )
         ctk.CTkLabel(
@@ -368,8 +425,8 @@ class LegacySetupModal(ctk.CTkToplevel):
         self.ans_entry.pack(padx=20, pady=(4, 10))
         
         # Recovery PIN
-        ctk.CTkLabel(container, text="PIN Pemulihan (6 Digit Angka):", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=20)
-        self.pin_entry = ctk.CTkEntry(container, height=36, width=380, placeholder_text="Contoh: 882149")
+        ctk.CTkLabel(container, text="PIN Pemulihan (6 Digit Angka - Opsional):", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=20)
+        self.pin_entry = ctk.CTkEntry(container, height=36, width=380, placeholder_text="Contoh: 882149 (Opsional)")
         self.pin_entry.pack(padx=20, pady=(4, 15))
         
         # Action Button
@@ -406,9 +463,10 @@ class LegacySetupModal(ctk.CTkToplevel):
             )
             conn.commit()
             messagebox.showinfo("Berhasil", "Keamanan akun Anda telah aktif!", parent=self)
-            if self.on_complete:
-                self.on_complete()
+            callback = self.on_complete
             self.destroy()
+            if callback:
+                callback()
         except Exception as e:
             conn.rollback()
             messagebox.showerror("Gagal", f"Gagal menyimpan: {str(e)}", parent=self)
@@ -423,6 +481,8 @@ class LoginFrame(ctk.CTkFrame):
         super().__init__(master)
         self.on_login_success = on_login_success
         self.mode = "login"  # "login" or "register"
+        self.msg_timer = None
+        self.active_modal = None
         
         self.configure(fg_color="transparent")
         
@@ -433,9 +493,12 @@ class LoginFrame(ctk.CTkFrame):
         self.create_widgets()
         
         # Check if any user exists. If not, auto-switch to registration mode!
-        if not has_registered_users():
-            self.set_mode("register", is_initial_setup=True)
-        else:
+        try:
+            if not has_registered_users():
+                self.set_mode("register", is_initial_setup=True)
+            else:
+                self.set_mode("login")
+        except Exception:
             self.set_mode("login")
             
     def create_widgets(self):
@@ -590,17 +653,23 @@ class LoginFrame(ctk.CTkFrame):
         self.password_entry.delete(0, "end")
         self.confirm_pw_entry.delete(0, "end")
         self.sec_ans_entry.delete(0, "end")
-        self.after(100, lambda: self.username_entry.focus())
+        self.after(100, lambda: self.username_entry.focus() if self.winfo_exists() else None)
 
     def open_forgot_password(self):
-        """Open the Forgot Password modal"""
+        """Open the Forgot Password modal with debouncing"""
+        if self.active_modal and self.active_modal.winfo_exists():
+            self.active_modal.lift()
+            self.active_modal.focus_force()
+            return
+
         def on_reset(username):
             self.set_mode("login")
+            self.username_entry.delete(0, "end")
             self.username_entry.insert(0, username)
             self.show_message("Password berhasil diperbarui! Silakan masuk.", is_error=False)
             self.password_entry.focus()
             
-        ForgotPasswordModal(self.winfo_toplevel(), on_reset_success=on_reset)
+        self.active_modal = ForgotPasswordModal(self.winfo_toplevel(), on_reset_success=on_reset)
 
     def handle_action(self):
         """Dispatch action based on current mode"""
@@ -618,21 +687,24 @@ class LoginFrame(ctk.CTkFrame):
             self.show_message("Username dan password harus diisi!", is_error=True)
             return
             
-        result = verify_login_detailed(username, password)
-        if result['success']:
-            log_activity(username, "LOGIN", f"User {username} berhasil login")
-            
-            # If user needs security setup (legacy user migration)
-            if result.get('needs_security_setup'):
-                def proceed():
+        try:
+            result = verify_login_detailed(username, password)
+            if result['success']:
+                log_activity(username, "LOGIN", f"User {username} berhasil login")
+                
+                # If user needs security setup (legacy user migration)
+                if result.get('needs_security_setup'):
+                    def proceed():
+                        self.on_login_success(username)
+                    LegacySetupModal(self.winfo_toplevel(), username, on_complete=proceed)
+                else:
                     self.on_login_success(username)
-                LegacySetupModal(self.winfo_toplevel(), username, on_complete=proceed)
             else:
-                self.on_login_success(username)
-        else:
-            self.show_message("Username atau password salah!", is_error=True)
-            self.password_entry.delete(0, "end")
-            self.password_entry.focus()
+                self.show_message("Username atau password salah!", is_error=True)
+                self.password_entry.delete(0, "end")
+                self.password_entry.focus()
+        except Exception as e:
+            self.show_message(f"Terjadi kesalahan saat login: {str(e)}", is_error=True)
 
     def attempt_register(self):
         """Validate and create new account"""
@@ -665,22 +737,35 @@ class LoginFrame(ctk.CTkFrame):
             self.sec_ans_entry.focus()
             return
             
-        result = register_user(
-            username=username,
-            password=password,
-            security_question=sec_q,
-            security_answer=sec_ans
-        )
-        if result['success']:
-            self.show_message("Pendaftaran berhasil! Mengalihkan ke aplikasi...", is_error=False)
-            self.after(1000, lambda: self.on_login_success(username))
-        else:
-            self.show_message(result['message'], is_error=True)
+        try:
+            result = register_user(
+                username=username,
+                password=password,
+                security_question=sec_q,
+                security_answer=sec_ans
+            )
+            if result['success']:
+                self.show_message("Pendaftaran berhasil! Mengalihkan ke aplikasi...", is_error=False)
+                self.after(1000, lambda: self.on_login_success(username) if self.winfo_exists() else None)
+            else:
+                self.show_message(result['message'], is_error=True)
+        except Exception as e:
+            self.show_message(f"Terjadi kesalahan saat pendaftaran: {str(e)}", is_error=True)
 
     def show_message(self, message: str, is_error: bool = True):
-        """Display error or success message"""
+        """Display error or success message with safe timer handling"""
+        if hasattr(self, 'msg_timer') and self.msg_timer:
+            try:
+                self.after_cancel(self.msg_timer)
+            except Exception:
+                pass
+            self.msg_timer = None
+            
         color = "#ff4757" if is_error else "#4ade80"
         self.msg_label.configure(text=message, text_color=color)
+        
         if is_error:
-            self.after(4000, lambda: self.msg_label.configure(text=""))
-
+            def clear_msg():
+                if self.winfo_exists():
+                    self.msg_label.configure(text="")
+            self.msg_timer = self.after(4000, clear_msg)

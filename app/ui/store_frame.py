@@ -211,20 +211,27 @@ class StoreFrame(ctk.CTkFrame):
         self.next_btn.pack(side="left", padx=10)
 
     def load_data(self, search_term: str = None):
-        """Load inventory items into table"""
+        """Load inventory items into table safely"""
         try:
-            if not self.winfo_exists(): return
-        except:
+            if not self.winfo_exists():
+                return
+        except Exception:
             return
 
         for widget in self.scroll_frame.winfo_children():
-            widget.destroy()
+            try:
+                widget.destroy()
+            except Exception:
+                pass
         
         # Fetch items
-        limit = self.items_per_page
-        offset = (self.current_page - 1) * limit
+        limit = max(1, self.items_per_page or 20)
+        offset = max(0, (self.current_page - 1) * limit)
         
-        items = self.warehouse.get_all_items(search_term)
+        try:
+            items = self.warehouse.get_all_items(search_term)
+        except Exception as e:
+            items = None
         
         if items is None:
             ctk.CTkLabel(
@@ -233,9 +240,17 @@ class StoreFrame(ctk.CTkFrame):
             ).pack(pady=50)
             return
 
-        # Handle sorting
-        items.sort(key=lambda x: x.get(self.sort_column) if x.get(self.sort_column) is not None else "", 
-                  reverse=self.sort_reverse)
+        # Handle sorting with type-safe key function
+        def get_sort_val(x):
+            v = x.get(self.sort_column)
+            if self.sort_column in ['stock', 'buy_price', 'sell_price']:
+                try:
+                    return float(v or 0)
+                except (ValueError, TypeError):
+                    return 0.0
+            return str(v or "").lower()
+
+        items.sort(key=get_sort_val, reverse=self.sort_reverse)
         
         # Handle pagination locally for simplicity in this frame
         self.total_pages = max(1, (len(items) + limit - 1) // limit)
@@ -557,7 +572,6 @@ class StoreFrame(ctk.CTkFrame):
 
         if is_quitting:
             self.close_window(key)
-            self.load_data()
             return
             
         if messagebox.askyesno("Sukses", "Data barang berhasil disimpan.\n\nApakah Anda ingin menutup jendela ini?"):
@@ -579,7 +593,6 @@ class StoreFrame(ctk.CTkFrame):
 
         if is_quitting:
             self.close_window(key)
-            self.load_data()
             return
             
         if messagebox.askyesno("Sukses", "Transaksi berhasil dicatat.\n\nApakah Anda ingin menutup jendela ini?"):
@@ -677,8 +690,14 @@ class ImportPreviewDialog(ctk.CTkToplevel):
         
         if result['success']:
             messagebox.showinfo("Sukses", result['message'])
-            self.on_complete()
-            self.destroy()
+            callback = self.on_complete
+            try:
+                if self.winfo_exists():
+                    self.destroy()
+            except Exception:
+                pass
+            if callback:
+                callback()
         else:
             messagebox.showerror("Error", result['message'])
 
@@ -824,6 +843,11 @@ class ItemDialog(ctk.CTkToplevel):
         if not all([code, name]):
             if not is_quitting:
                 messagebox.showerror("Data Tidak Lengkap", "Kode Barang dan Nama Barang wajib diisi!")
+            return
+
+        if stock < 0 or buy_price < 0 or sell_price < 0:
+            if not is_quitting:
+                messagebox.showerror("Error", "Stok dan Harga tidak boleh bernilai negatif!")
             return
             
         data = {
@@ -974,8 +998,19 @@ class SellDialog(ctk.CTkToplevel):
         ).pack(side="left", padx=10)
 
     def on_member_search(self, event=None):
-        """Filter members as user types"""
+        """Filter members as user types with debouncing"""
+        if hasattr(self, '_search_timer') and self._search_timer:
+            try:
+                self.after_cancel(self._search_timer)
+            except Exception:
+                pass
+        self._search_timer = self.after(250, self._perform_member_search)
+
+    def _perform_member_search(self):
+        """Actual member search execution"""
         try:
+            if not self.winfo_exists():
+                return
             query = self.member_search.get().strip()
             if len(query) < 2:
                 self.hide_autocomplete()
@@ -1037,7 +1072,7 @@ class SellDialog(ctk.CTkToplevel):
         try:
             qty_raw = clean_numeric(self.qty_entry.get())
             qty = int(qty_raw) if qty_raw else 0
-            total = qty * self.item['sell_price']
+            total = max(0, qty) * self.item['sell_price']
             self.total_label.configure(text=f"Total: Rp {total:,.0f}")
         except Exception:
             pass
@@ -1059,15 +1094,16 @@ class SellDialog(ctk.CTkToplevel):
             if not self.selected_member_id:
                 messagebox.showerror("Error", "Wajib memilih Anggota untuk transaksi ini!")
                 return
-        
+                
         try:
-            qty = int(clean_numeric(self.qty_entry.get()))
+            qty_raw = clean_numeric(self.qty_entry.get())
+            qty = int(qty_raw)
         except (ValueError, TypeError):
             messagebox.showerror("Error", "Jumlah harus berupa angka valid!")
             return
             
         if qty <= 0:
-            messagebox.showerror("Error", "Jumlah harus lebih dari 0!")
+            messagebox.showerror("Error", "Jumlah pembelian harus lebih dari 0!")
             return
             
         if qty > self.item['stock']:
@@ -1179,6 +1215,10 @@ class ReturDialog(ctk.CTkToplevel):
             messagebox.showerror("Error", "Jumlah harus berupa angka valid!")
             return
             
+        if qty <= 0:
+            messagebox.showerror("Error", "Jumlah retur harus lebih besar dari 0!")
+            return
+
         reason = self.reason_text.get("1.0", "end-1c").strip()
         if not reason:
             messagebox.showerror("Error", "Alasan retur wajib diisi!")

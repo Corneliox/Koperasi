@@ -9,26 +9,22 @@ from fpdf import FPDF
 
 def generate_receipt(sale_data: dict, output_dir: str = None) -> str:
     """
-    Generate receipt/invoice for a sale transaction
+    Generate receipt/invoice for a sale transaction safely
     
-    :param sale_data: Dict containing:
-        - item_name: Name of item sold
-        - qty: Quantity sold
-        - unit_price: Price per unit
-        - total: Total amount
-        - category: SEMBAKO or TAKTIKAL
-        - member_name: (optional) Buyer name
-        - member_nrp: (optional) Buyer NRP
+    :param sale_data: Dict containing transaction details
     :param output_dir: Output directory
     :return: Path to generated receipt
     """
+    if not sale_data:
+        return ""
+
     if output_dir is None:
         output_dir = os.path.join(os.path.expanduser("~"), "Documents", "Koperasi_Struk")
     
     os.makedirs(output_dir, exist_ok=True)
     
-    # Generate receipt number
-    receipt_no = datetime.now().strftime("%Y%m%d%H%M%S")
+    # Generate receipt number with microseconds to avoid collision
+    receipt_no = datetime.now().strftime("%Y%m%d%H%M%S%f")[:17]
     
     # Create PDF receipt
     pdf = ReceiptPDF()
@@ -79,20 +75,37 @@ def generate_receipt(sale_data: dict, output_dir: str = None) -> str:
             'total': sale_data.get('total', 0)
         }]
     
-    grand_total = sale_data.get('grand_total', sale_data.get('total', 0))
-    if not grand_total and items_list:
-        grand_total = sum(it.get('total', it.get('qty', 0) * it.get('price', 0)) for it in items_list)
-        
+    grand_total = 0.0
     for it in items_list:
         item_name = str(it.get('name', '-'))
         if len(item_name) > 25:
             item_name = item_name[:25] + '...'
         
+        try:
+            qty_val = float(it.get('qty') or 0)
+            price_val = float(it.get('price') or it.get('unit_price') or 0)
+            total_val = float(it.get('total') or (qty_val * price_val))
+        except (ValueError, TypeError):
+            qty_val = 0.0
+            price_val = 0.0
+            total_val = 0.0
+            
+        grand_total += total_val
+        
         pdf.cell(50, 5, item_name, border=0)
-        pdf.cell(15, 5, str(it.get('qty', 0)), border=0, align='C')
-        pdf.cell(25, 5, f"Rp {it.get('price', 0):,.0f}", border=0, align='R')
+        pdf.cell(15, 5, f"{qty_val:.0f}", border=0, align='C')
+        pdf.cell(25, 5, f"Rp {price_val:,.0f}", border=0, align='R')
         pdf.ln()
     
+    # Override grand_total if explicitly given and valid
+    if sale_data.get('grand_total') is not None or sale_data.get('total') is not None:
+        try:
+            specified_total = float(sale_data.get('grand_total') or sale_data.get('total') or 0)
+            if specified_total > 0:
+                grand_total = specified_total
+        except (ValueError, TypeError):
+            pass
+
     pdf.ln(3)
     pdf.line(10, pdf.get_y(), 90, pdf.get_y())
     pdf.ln(3)
@@ -118,19 +131,18 @@ def generate_receipt(sale_data: dict, output_dir: str = None) -> str:
 
 def generate_thermal_receipt(sale_data: dict, output_dir: str = None) -> str:
     """
-    Generate thermal printer compatible text receipt
+    Generate thermal printer compatible text receipt safely
     Standard 58mm/80mm thermal paper format
-    
-    :param sale_data: Same as generate_receipt
-    :param output_dir: Output directory
-    :return: Path to text file
     """
+    if not sale_data:
+        return ""
+
     if output_dir is None:
         output_dir = os.path.join(os.path.expanduser("~"), "Documents", "Koperasi_Struk")
     
     os.makedirs(output_dir, exist_ok=True)
     
-    receipt_no = datetime.now().strftime("%Y%m%d%H%M%S")
+    receipt_no = datetime.now().strftime("%Y%m%d%H%M%S%f")[:17]
     
     # Build receipt text (32 char width for 58mm paper)
     lines = []
@@ -143,7 +155,7 @@ def generate_thermal_receipt(sale_data: dict, output_dir: str = None) -> str:
     lines.append(f"Kat: {sale_data.get('category', 'SEMBAKO')}")
     
     if sale_data.get('member_name'):
-        lines.append(f"Pembeli: {sale_data['member_name'][:20]}")
+        lines.append(f"Pembeli: {str(sale_data['member_name'])[:20]}")
     
     lines.append("-" * 32)
     
@@ -157,17 +169,30 @@ def generate_thermal_receipt(sale_data: dict, output_dir: str = None) -> str:
             'total': sale_data.get('total', 0)
         }]
     
-    grand_total = sale_data.get('grand_total', sale_data.get('total', 0))
-    if not grand_total and items_list:
-        grand_total = sum(it.get('total', it.get('qty', 0) * it.get('price', 0)) for it in items_list)
-        
+    grand_total = 0.0
     for it in items_list:
         item_name = str(it.get('name', '-'))[:25]
-        qty = it.get('qty', 0)
-        unit_price = it.get('price', 0)
+        try:
+            qty_val = float(it.get('qty') or 0)
+            price_val = float(it.get('price') or it.get('unit_price') or 0)
+            total_val = float(it.get('total') or (qty_val * price_val))
+        except (ValueError, TypeError):
+            qty_val = 0.0
+            price_val = 0.0
+            total_val = 0.0
+            
+        grand_total += total_val
         lines.append(item_name)
-        lines.append(f"  {qty} x Rp {unit_price:,.0f}")
+        lines.append(f"  {qty_val:.0f} x Rp {price_val:,.0f}")
     
+    if sale_data.get('grand_total') is not None or sale_data.get('total') is not None:
+        try:
+            specified_total = float(sale_data.get('grand_total') or sale_data.get('total') or 0)
+            if specified_total > 0:
+                grand_total = specified_total
+        except (ValueError, TypeError):
+            pass
+
     lines.append("-" * 32)
     lines.append(f"TOTAL: Rp {grand_total:,.0f}".rjust(32))
     lines.append("=" * 32)
@@ -187,19 +212,22 @@ def generate_thermal_receipt(sale_data: dict, output_dir: str = None) -> str:
 def generate_invoice(transaction_list: list, member_info: dict = None,
                      output_dir: str = None) -> str:
     """
-    Generate invoice for multiple items (bulk purchase)
+    Generate invoice for multiple items (bulk purchase) safely
     
     :param transaction_list: List of transactions
     :param member_info: Optional member info dict
     :param output_dir: Output directory
     :return: Path to PDF invoice
     """
+    if not transaction_list:
+        return ""
+
     if output_dir is None:
         output_dir = os.path.join(os.path.expanduser("~"), "Documents", "Koperasi_Invoice")
     
     os.makedirs(output_dir, exist_ok=True)
     
-    invoice_no = datetime.now().strftime("INV%Y%m%d%H%M%S")
+    invoice_no = datetime.now().strftime("INV%Y%m%d%H%M%S%f")[:20]
     
     pdf = FPDF()
     pdf.add_page()
@@ -249,15 +277,22 @@ def generate_invoice(transaction_list: list, member_info: dict = None,
     pdf.set_text_color(0, 0, 0)
     pdf.set_font('Helvetica', '', 10)
     
-    total = 0
+    total = 0.0
     for idx, trans in enumerate(transaction_list):
-        subtotal = trans.get('qty', 0) * trans.get('unit_price', 0)
+        try:
+            qty_val = float(trans.get('qty') or 0)
+            unit_price_val = float(trans.get('unit_price') or 0)
+        except (ValueError, TypeError):
+            qty_val = 0.0
+            unit_price_val = 0.0
+            
+        subtotal = qty_val * unit_price_val
         total += subtotal
         
         pdf.cell(10, 7, str(idx + 1), border=1, align='C')
         pdf.cell(70, 7, str(trans.get('item_name', '-'))[:35], border=1)
-        pdf.cell(25, 7, str(trans.get('qty', 0)), border=1, align='C')
-        pdf.cell(35, 7, f"Rp {trans.get('unit_price', 0):,.0f}", border=1, align='R')
+        pdf.cell(25, 7, f"{qty_val:.0f}", border=1, align='C')
+        pdf.cell(35, 7, f"Rp {unit_price_val:,.0f}", border=1, align='R')
         pdf.cell(40, 7, f"Rp {subtotal:,.0f}", border=1, align='R')
         pdf.ln()
     

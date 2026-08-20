@@ -104,6 +104,9 @@ class WarehouseManager:
         except (ValueError, TypeError):
             return {"success": False, "message": "Stok dan harga harus berupa angka"}
 
+        if stock < 0 or buy_price < 0 or sell_price < 0:
+            return {"success": False, "message": "Stok dan harga tidak boleh bernilai negatif"}
+
         conn = get_connection()
         try:
             cursor = conn.cursor()
@@ -180,44 +183,58 @@ class WarehouseManager:
         if not old_item:
             return {"success": False, "message": "Barang tidak ditemukan"}
         
+        try:
+            stock = int(stock) if stock is not None else old_item['stock']
+            buy_price = float(buy_price) if buy_price is not None else old_item['buy_price']
+            sell_price = float(sell_price) if sell_price is not None else old_item['sell_price']
+            status = status if status is not None else old_item.get('status', 'Koperasi')
+            name = name if name is not None else old_item['name']
+        except (ValueError, TypeError):
+            return {"success": False, "message": "Stok dan harga harus berupa angka valid"}
+
+        if stock < 0 or buy_price < 0 or sell_price < 0:
+            return {"success": False, "message": "Stok dan harga tidak boleh bernilai negatif"}
+        
         old_stock = old_item['stock']
         stock_diff = stock - old_stock
         
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Update item
-        cursor.execute(
-            """UPDATE warehouse 
-               SET item_code=?, name=?, stock=?, buy_price=?, sell_price=?, status=?, 
-                   is_active=?, description=?, updated_at=CURRENT_TIMESTAMP
-               WHERE id=? AND category_type=?""",
-            (item_code, name, stock, buy_price, sell_price, status, is_active, description, 
-             item_id, self.category_context)
-        )
-        
-        # Create mutation if stock changed
-        if stock_diff != 0:
-            mutation_type = 'IN' if stock_diff > 0 else 'OUT'
+        try:
+            cursor = conn.cursor()
+            
+            # Update item
             cursor.execute(
-                """INSERT INTO warehouse_mutation (item_id, type, qty, description)
-                   VALUES (?, ?, ?, ?)""",
-                (item_id, mutation_type, abs(stock_diff), 
-                 f"Koreksi stok: {old_stock} -> {stock}")
+                """UPDATE warehouse 
+                   SET item_code=?, name=?, stock=?, buy_price=?, sell_price=?, status=?, 
+                       is_active=?, description=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND category_type=?""",
+                (item_code, name, stock, buy_price, sell_price, status, is_active, description, 
+                 item_id, self.category_context)
             )
-        
-        conn.commit()
-        conn.close()
-        
-        # Log activity
-        log_audit(
-            self.current_user, "INVENTORY", "UPDATE",
-            "warehouse", item_id, old_item, 
-            {"name": name, "stock": stock, "is_active": is_active},
-            f"Edit barang ID {item_id}: {name}, Stok: {old_stock} -> {stock}, Aktif: {is_active}", "INFO"
-        )
-        
-        return {"success": True, "message": "Data barang berhasil diupdate"}
+            
+            # Create mutation if stock changed
+            if stock_diff != 0:
+                mutation_type = 'IN' if stock_diff > 0 else 'OUT'
+                cursor.execute(
+                    """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                       VALUES (?, ?, ?, ?)""",
+                    (item_id, mutation_type, abs(stock_diff), 
+                     f"Koreksi stok: {old_stock} -> {stock}")
+                )
+            
+            conn.commit()
+            
+            # Log activity
+            log_audit(
+                self.current_user, "INVENTORY", "UPDATE",
+                "warehouse", item_id, old_item, 
+                {"name": name, "stock": stock, "is_active": is_active},
+                f"Edit barang ID {item_id}: {name}, Stok: {old_stock} -> {stock}, Aktif: {is_active}", "INFO"
+            )
+            
+            return {"success": True, "message": "Data barang berhasil diupdate"}
+        finally:
+            conn.close()
     
     @handle_db_errors
     def delete_item(self, item_id: int) -> dict:
@@ -227,31 +244,40 @@ class WarehouseManager:
             return {"success": False, "message": "Barang tidak ditemukan"}
         
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM warehouse WHERE id = ? AND category_type = ?",
-            (item_id, self.category_context)
-        )
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "INVENTORY", "DELETE",
-            "warehouse", item_id, item, None,
-            f"Hapus barang: {item['name']} (ID: {item_id})", "WARNING"
-        )
-        
-        return {"success": True, "message": "Barang berhasil dihapus"}
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM warehouse WHERE id = ? AND category_type = ?",
+                (item_id, self.category_context)
+            )
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "INVENTORY", "DELETE",
+                "warehouse", item_id, item, None,
+                f"Hapus barang: {item['name']} (ID: {item_id})", "WARNING"
+            )
+            
+            return {"success": True, "message": "Barang berhasil dihapus"}
+        finally:
+            conn.close()
     
     @handle_db_errors
     def sell_item(self, item_id: int, qty: int, member_id: int = None,
                   payment_method: str = "Tunai", current_user: str = None) -> dict:
         """
-        Sell item - decreases stock and creates transaction
+        Sell item - decreases stock atomically and creates transaction
         """
-        # Update current user if provided
         if current_user:
             self.current_user = current_user
+
+        try:
+            qty = int(qty)
+        except (ValueError, TypeError):
+            return {"success": False, "message": "Jumlah harus berupa angka"}
+
+        if qty <= 0:
+            return {"success": False, "message": "Jumlah penjualan harus lebih dari 0"}
 
         item = self.get_item_by_id(item_id)
         if not item:
@@ -260,55 +286,57 @@ class WarehouseManager:
         if not item.get('is_active', 1):
             return {"success": False, "message": "Barang ini sudah tidak aktif dan tidak bisa dijual."}
         
-        if item['stock'] < qty:
-            return {"success": False, "message": f"Stok tidak cukup. Tersedia: {item['stock']}"}
-        
-        new_stock = item['stock'] - qty
         total_price = item['sell_price'] * qty
         
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Update stock
-        cursor.execute(
-            "UPDATE warehouse SET stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (new_stock, item_id)
-        )
-        
-        # Create OUT mutation
-        cursor.execute(
-            """INSERT INTO warehouse_mutation (item_id, type, qty, description)
-               VALUES (?, 'OUT', ?, ?)""",
-            (item_id, qty, f"Penjualan: {qty} unit")
-        )
-        
-        # Create transaction record
-        cursor.execute(
-            """INSERT INTO transactions 
-               (item_id, member_id, qty, unit_price, total_price, category_type, payment_method)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (item_id, member_id, qty, item['sell_price'], total_price, 
-             self.category_context, payment_method)
-        )
-        transaction_id = cursor.lastrowid
-        
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "TRANSACTION", "CREATE",
-            "warehouse", item_id, 
-            {"stock": item['stock']}, {"stock": new_stock},
-            f"Jual {item['name']} x{qty} = Rp {total_price:,.0f} ({payment_method})", "INFO"
-        )
-        
-        return {
-            "success": True, 
-            "message": "Penjualan berhasil",
-            "total": total_price,
-            "remaining_stock": new_stock,
-            "transaction_id": transaction_id
-        }
+        try:
+            cursor = conn.cursor()
+            
+            # Atomic stock deduction
+            cursor.execute(
+                "UPDATE warehouse SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stock >= ?",
+                (qty, item_id, qty)
+            )
+            if cursor.rowcount == 0:
+                return {"success": False, "message": f"Stok tidak cukup. Tersedia: {item['stock']}"}
+            
+            new_stock = item['stock'] - qty
+            
+            # Create OUT mutation
+            cursor.execute(
+                """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                   VALUES (?, 'OUT', ?, ?)""",
+                (item_id, qty, f"Penjualan: {qty} unit")
+            )
+            
+            # Create transaction record
+            cursor.execute(
+                """INSERT INTO transactions 
+                   (item_id, member_id, qty, unit_price, total_price, category_type, payment_method)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (item_id, member_id, qty, item['sell_price'], total_price, 
+                 self.category_context, payment_method)
+            )
+            transaction_id = cursor.lastrowid
+            
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "TRANSACTION", "CREATE",
+                "warehouse", item_id, 
+                {"stock": item['stock']}, {"stock": new_stock},
+                f"Jual {item['name']} x{qty} = Rp {total_price:,.0f} ({payment_method})", "INFO"
+            )
+            
+            return {
+                "success": True, 
+                "message": "Penjualan berhasil",
+                "total": total_price,
+                "remaining_stock": new_stock,
+                "transaction_id": transaction_id
+            }
+        finally:
+            conn.close()
     
     @handle_db_errors
     def sell_items_bulk(self, items_to_sell: list, member_id: int, 
@@ -332,7 +360,13 @@ class WarehouseManager:
             # 1. Validation phase
             for entry in items_to_sell:
                 item_id = entry['id']
-                qty = entry['qty']
+                try:
+                    qty = int(entry['qty'])
+                except (ValueError, TypeError):
+                    return {"success": False, "message": f"Jumlah barang tidak valid untuk ID {item_id}"}
+
+                if qty <= 0:
+                    return {"success": False, "message": "Jumlah barang harus lebih dari 0"}
                 
                 cursor.execute("SELECT name, stock, sell_price, is_active FROM warehouse WHERE id = ?", (item_id,))
                 row = cursor.fetchone()
@@ -354,13 +388,15 @@ class WarehouseManager:
                     'price': item['sell_price']
                 })
             
-            # 2. Execution phase
+            # 2. Execution phase (Atomic)
             for item in sold_items:
-                # Update stock
                 cursor.execute(
-                    "UPDATE warehouse SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (item['qty'], item['id'])
+                    "UPDATE warehouse SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stock >= ?",
+                    (item['qty'], item['id'], item['qty'])
                 )
+                if cursor.rowcount == 0:
+                    conn.rollback()
+                    return {"success": False, "message": f"Gagal: Stok '{item['name']}' berubah atau tidak cukup!"}
                 
                 # Create OUT mutation
                 cursor.execute(
@@ -406,54 +442,72 @@ class WarehouseManager:
         Return item - decreases stock (returns to supplier/disposal)
         Creates RETURN mutation
         """
+        try:
+            qty = int(qty)
+        except (ValueError, TypeError):
+            return {"success": False, "message": "Jumlah retur harus berupa angka"}
+
+        if qty <= 0:
+            return {"success": False, "message": "Jumlah retur harus lebih besar dari 0"}
+
         item = self.get_item_by_id(item_id)
         if not item:
             return {"success": False, "message": "Barang tidak ditemukan"}
         
-        if item['stock'] < qty:
-            return {"success": False, "message": f"Stok tidak cukup untuk retur. Tersedia: {item['stock']}"}
-        
-        new_stock = item['stock'] - qty
-        
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Update stock
-        cursor.execute(
-            "UPDATE warehouse SET stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (new_stock, item_id)
-        )
-        
-        # Create RETURN mutation
-        cursor.execute(
-            """INSERT INTO warehouse_mutation (item_id, type, qty, description)
-               VALUES (?, 'RETURN', ?, ?)""",
-            (item_id, qty, f"Retur: {reason}")
-        )
-        
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "INVENTORY", "RETURN",
-            "warehouse", item_id, 
-            {"stock": item['stock']}, {"stock": new_stock},
-            f"Retur {item['name']} x{qty}. Alasan: {reason}", "WARNING"
-        )
-        
-        return {
-            "success": True, 
-            "message": "Retur berhasil dicatat",
-            "remaining_stock": new_stock
-        }
+        try:
+            cursor = conn.cursor()
+            
+            # Atomic update
+            cursor.execute(
+                "UPDATE warehouse SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stock >= ?",
+                (qty, item_id, qty)
+            )
+            if cursor.rowcount == 0:
+                return {"success": False, "message": f"Stok tidak cukup untuk retur. Tersedia: {item['stock']}"}
+            
+            new_stock = item['stock'] - qty
+            
+            # Create RETURN mutation
+            cursor.execute(
+                """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                   VALUES (?, 'RETURN', ?, ?)""",
+                (item_id, qty, f"Retur: {reason}")
+            )
+            
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "INVENTORY", "RETURN",
+                "warehouse", item_id, 
+                {"stock": item['stock']}, {"stock": new_stock},
+                f"Retur {item['name']} x{qty}. Alasan: {reason}", "WARNING"
+            )
+            
+            return {
+                "success": True, 
+                "message": "Retur berhasil dicatat",
+                "remaining_stock": new_stock
+            }
+        finally:
+            conn.close()
     
     @handle_db_errors
     def return_item(self, item_id: int, qty: int, reason: str) -> dict:
         """Alias for retur_barang to match UI expectations"""
         return self.retur_barang(item_id, qty, reason)
     
+    @handle_db_errors
     def add_stock(self, item_id: int, qty: int, description: str = "") -> dict:
         """Add stock to existing item"""
+        try:
+            qty = int(qty)
+        except (ValueError, TypeError):
+            return {"success": False, "message": "Jumlah tambah stok harus berupa angka"}
+
+        if qty <= 0:
+            return {"success": False, "message": "Jumlah tambah stok harus lebih dari 0"}
+
         item = self.get_item_by_id(item_id)
         if not item:
             return {"success": False, "message": "Barang tidak ditemukan"}
@@ -461,21 +515,32 @@ class WarehouseManager:
         new_stock = item['stock'] + qty
         
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            "UPDATE warehouse SET stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (new_stock, item_id)
-        )
-        
-        cursor.execute(
-            """INSERT INTO warehouse_mutation (item_id, type, qty, description)
-               VALUES (?, 'IN', ?, ?)""",
-            (item_id, qty, description or f"Tambah stok: {qty} unit")
-        )
-        
-        conn.commit()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "UPDATE warehouse SET stock = stock + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (qty, item_id)
+            )
+            
+            cursor.execute(
+                """INSERT INTO warehouse_mutation (item_id, type, qty, description)
+                   VALUES (?, 'IN', ?, ?)""",
+                (item_id, qty, description or f"Tambah stok: {qty} unit")
+            )
+            
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "INVENTORY", "UPDATE",
+                "warehouse", item_id, 
+                {"stock": item['stock']}, {"stock": new_stock},
+                f"Tambah stok {item['name']}: +{qty} (Total: {new_stock})", "INFO"
+            )
+            
+            return {"success": True, "message": "Stok berhasil ditambah", "new_stock": new_stock}
+        finally:
+            conn.close()
         
         log_audit(
             self.current_user, "INVENTORY", "UPDATE",

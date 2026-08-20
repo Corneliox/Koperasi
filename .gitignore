@@ -1,5 +1,21 @@
-build/*
-dist/*
-Ver/*
-csharp/*
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database and backups
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.bak
+
+# Logs
+logs/
+*.log
+
+# Build & Release
+build/
+dist/
+Ver/
+csharp/

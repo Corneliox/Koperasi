@@ -2,10 +2,13 @@ import sys
 import re
 
 # Windows Version Detection
-try:
-    is_win7 = sys.getwindowsversion().major == 6 and sys.getwindowsversion().minor == 1
-except:
-    is_win7 = False
+is_win7 = False
+if sys.platform == 'win32' and hasattr(sys, 'getwindowsversion'):
+    try:
+        ver = sys.getwindowsversion()
+        is_win7 = (ver.major == 6 and ver.minor == 1)
+    except Exception:
+        is_win7 = False
 
 # Functional icons that should be replaced with words instead of just stripped
 CRITICAL_FALLBACKS = {

@@ -26,10 +26,12 @@ def find_similar_members(search_name: str, threshold: float = 0.8) -> List[Tuple
     :return: List of (member_dict, similarity_score) tuples, sorted by score desc
     """
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM members ORDER BY name")
-    members = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM members ORDER BY name")
+        members = [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
     
     similar = []
     for member in members:
@@ -64,46 +66,48 @@ def autocomplete_members(partial_name: str, limit: int = 10) -> List[dict]:
         return []
     
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Search by name prefix first
-    cursor.execute(
-        """SELECT * FROM members 
-           WHERE name LIKE ? OR nrp LIKE ?
-           ORDER BY name
-           LIMIT ?""",
-        (f"{partial_name}%", f"{partial_name}%", limit)
-    )
-    prefix_matches = [dict(row) for row in cursor.fetchall()]
-    
-    # If not enough, search with contains
-    if len(prefix_matches) < limit:
-        remaining = limit - len(prefix_matches)
-        existing_ids = [m['id'] for m in prefix_matches]
+    try:
+        cursor = conn.cursor()
         
-        if existing_ids:
-            placeholders = ','.join('?' * len(existing_ids))
-            cursor.execute(
-                f"""SELECT * FROM members 
-                   WHERE (name LIKE ? OR nrp LIKE ?)
-                   AND id NOT IN ({placeholders})
-                   ORDER BY name
-                   LIMIT ?""",
-                (f"%{partial_name}%", f"%{partial_name}%", *existing_ids, remaining)
-            )
-        else:
-            cursor.execute(
-                """SELECT * FROM members 
-                   WHERE name LIKE ? OR nrp LIKE ?
-                   ORDER BY name
-                   LIMIT ?""",
-                (f"%{partial_name}%", f"%{partial_name}%", remaining)
-            )
+        # Search by name prefix first
+        cursor.execute(
+            """SELECT * FROM members 
+               WHERE name LIKE ? OR nrp LIKE ?
+               ORDER BY name
+               LIMIT ?""",
+            (f"{partial_name}%", f"{partial_name}%", limit)
+        )
+        prefix_matches = [dict(row) for row in cursor.fetchall()]
         
-        prefix_matches.extend([dict(row) for row in cursor.fetchall()])
-    
-    conn.close()
-    return prefix_matches
+        # If not enough, search with contains
+        if len(prefix_matches) < limit:
+            remaining = limit - len(prefix_matches)
+            existing_ids = [m['id'] for m in prefix_matches]
+            
+            if existing_ids:
+                placeholders = ','.join('?' * len(existing_ids))
+                cursor.execute(
+                    f"""SELECT * FROM members 
+                       WHERE (name LIKE ? OR nrp LIKE ?)
+                       AND id NOT IN ({placeholders})
+                       ORDER BY name
+                       LIMIT ?""",
+                    (f"%{partial_name}%", f"%{partial_name}%", *existing_ids, remaining)
+                )
+            else:
+                cursor.execute(
+                    """SELECT * FROM members 
+                       WHERE name LIKE ? OR nrp LIKE ?
+                       ORDER BY name
+                       LIMIT ?""",
+                    (f"%{partial_name}%", f"%{partial_name}%", remaining)
+                )
+            
+            prefix_matches.extend([dict(row) for row in cursor.fetchall()])
+        
+        return prefix_matches
+    finally:
+        conn.close()
 
 
 def check_duplicate_before_create(name: str, nrp: str = None) -> dict:
@@ -112,35 +116,34 @@ def check_duplicate_before_create(name: str, nrp: str = None) -> dict:
     
     :return: Dict with 'has_duplicate', 'exact_match', 'similar_matches'
     """
-    conn = get_connection()
-    cursor = conn.cursor()
-    
     result = {
         'has_duplicate': False,
         'exact_match': None,
         'similar_matches': []
     }
     
-    # Check exact NRP match first
-    if nrp:
-        cursor.execute("SELECT * FROM members WHERE nrp = ?", (nrp,))
-        exact_nrp = cursor.fetchone()
-        if exact_nrp:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Check exact NRP match first
+        if nrp:
+            cursor.execute("SELECT * FROM members WHERE nrp = ?", (nrp,))
+            exact_nrp = cursor.fetchone()
+            if exact_nrp:
+                result['has_duplicate'] = True
+                result['exact_match'] = dict(exact_nrp)
+                return result
+        
+        # Check exact name match
+        cursor.execute("SELECT * FROM members WHERE LOWER(name) = LOWER(?)", (name,))
+        exact_name = cursor.fetchone()
+        if exact_name:
             result['has_duplicate'] = True
-            result['exact_match'] = dict(exact_nrp)
-            conn.close()
+            result['exact_match'] = dict(exact_name)
             return result
-    
-    # Check exact name match
-    cursor.execute("SELECT * FROM members WHERE LOWER(name) = LOWER(?)", (name,))
-    exact_name = cursor.fetchone()
-    if exact_name:
-        result['has_duplicate'] = True
-        result['exact_match'] = dict(exact_name)
+    finally:
         conn.close()
-        return result
-    
-    conn.close()
     
     # Check fuzzy matches
     similar = find_similar_members(name, threshold=0.8)

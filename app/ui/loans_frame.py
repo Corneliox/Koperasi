@@ -160,10 +160,10 @@ class LoansFrame(ctk.CTkFrame):
         for i, config in enumerate(self.columns_config):
             row_frame.grid_columnconfigure(i, weight=config["weight"], minsize=config["width"])
 
-        # Data Parsing
-        total = loan.get('total_amount', 1)
-        paid = loan.get('paid_amount', 0)
-        prog = (paid / total)
+        # Data Parsing with ZeroDivisionError Protection
+        total = float(loan.get('total_amount') or 0)
+        paid = float(loan.get('paid_amount') or 0)
+        prog = min(1.0, max(0.0, paid / total)) if total > 0 else 0.0
         
         # ID & Nama
         ctk.CTkLabel(row_frame, text=f"#{loan['id']}", font=ctk.CTkFont(size=11)).grid(row=0, column=0, padx=10, sticky="w")
@@ -171,7 +171,8 @@ class LoansFrame(ctk.CTkFrame):
         ctk.CTkLabel(row_frame, text=str(loan.get('member_phone', '-')), font=ctk.CTkFont(size=11), text_color="#00d4ff").grid(row=0, column=2, padx=10, sticky="w")
         
         # Financials
-        ctk.CTkLabel(row_frame, text=f"Rp {loan['principal']:,.0f}", font=ctk.CTkFont(size=11)).grid(row=0, column=3, padx=10, sticky="w")
+        principal_val = float(loan.get('principal') or 0)
+        ctk.CTkLabel(row_frame, text=f"Rp {principal_val:,.0f}", font=ctk.CTkFont(size=11)).grid(row=0, column=3, padx=10, sticky="w")
         ctk.CTkLabel(row_frame, text=f"Rp {total:,.0f}", text_color=self.colors["accent"], font=ctk.CTkFont(size=11, weight="bold")).grid(row=0, column=4, padx=10, sticky="w")
 
         # Progress Section (ENHANCED)
@@ -192,8 +193,8 @@ class LoansFrame(ctk.CTkFrame):
 
         # Due Date with Color Logic
         due_date_str = loan.get('due_date', '-') or '-'
-        due_col = self.get_due_color(due_date_str, loan['status'])
-        ctk.CTkLabel(row_frame, text=due_date_str[:10], font=ctk.CTkFont(size=11, weight="bold"), text_color=due_col).grid(row=0, column=6, padx=10, sticky="w")
+        due_col = self.get_due_color(due_date_str, loan.get('status', 'Aktif'))
+        ctk.CTkLabel(row_frame, text=str(due_date_str)[:10], font=ctk.CTkFont(size=11, weight="bold"), text_color=due_col).grid(row=0, column=6, padx=10, sticky="w")
 
         # Status Badge
         status_text = str(loan.get('status', 'Aktif'))
@@ -218,19 +219,23 @@ class LoansFrame(ctk.CTkFrame):
         
         ctk.CTkButton(a_frame, text="👁", width=32, height=30, fg_color="#3b82f6",
                       command=lambda ld=loan: self.view_loan_details(ld)).pack(side="left", padx=2)
-        if loan['status'] != 'Lunas':
+        if loan.get('status') != 'Lunas':
             ctk.CTkButton(a_frame, text="💵", width=32, height=30, fg_color=self.colors["success"], text_color="#000",
                           command=lambda ld=loan: self.open_payment_dialog(ld)).pack(side="left", padx=2)
 
     def get_due_color(self, date_str, status):
-        if status == "Lunas" or date_str == '-': return "#888"
+        if not date_str or date_str == '-' or status == "Lunas":
+            return "#888888"
         try:
-            due_date = datetime.strptime(date_str[:10], '%Y-%m-%d')
-            diff = (due_date - datetime.now()).days
-            if diff < 0: return self.colors["danger"]
-            if diff < 7: return self.colors["accent"]
+            due_date = datetime.strptime(str(date_str)[:10], '%Y-%m-%d')
+            diff = (due_date.date() - datetime.now().date()).days
+            if diff < 0:
+                return self.colors["danger"]
+            if diff < 7:
+                return self.colors["accent"]
             return self.colors["success"]
-        except: return "#888"
+        except Exception:
+            return "#888888"
 
     def open_simulation(self):
         """Open loan simulation dialog"""

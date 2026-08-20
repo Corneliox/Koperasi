@@ -29,143 +29,144 @@ class FinancialReportManager:
         :return: Balance sheet dict
         """
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Default to current month
-        if not start_date:
-            today = datetime.now()
-            start_date = today.replace(day=1).strftime('%Y-%m-%d')
-        if not end_date:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-        
-        # Build category filter
-        cat_filter = ""
-        cat_params = []
-        if self.category_context:
-            cat_filter = "AND category_type = ?"
-            cat_params = [self.category_context]
-        
-        # === ASSETS (AKTIVA) ===
-        
-        # 1. Inventory Value (Nilai Persediaan)
-        cursor.execute(f"""
-            SELECT COALESCE(SUM(stock * buy_price), 0) as value
-            FROM warehouse
-            WHERE 1=1 {cat_filter.replace('category_type', 'category_type')}
-        """, cat_params)
-        inventory_value = cursor.fetchone()['value']
-        
-        # 2. Total Items Count
-        cursor.execute(f"""
-            SELECT COUNT(*), COALESCE(SUM(stock), 0) as total_stock
-            FROM warehouse
-            WHERE 1=1 {cat_filter}
-        """, cat_params)
-        row = cursor.fetchone()
-        total_items = row[0]
-        total_stock = row['total_stock']
-        
-        # 3. Outstanding Loans (Piutang)
-        cursor.execute("""
-            SELECT COALESCE(SUM(total_amount - paid_amount), 0) as outstanding
-            FROM loans
-            WHERE status = 'Aktif'
-        """)
-        outstanding_loans = cursor.fetchone()['outstanding']
-        
-        # 4. Bad Debts (Piutang Macet)
-        cursor.execute("""
-            SELECT COALESCE(SUM(total_amount - paid_amount), 0) as bad_debt
-            FROM loans
-            WHERE status = 'Macet'
-        """)
-        bad_debts = cursor.fetchone()['bad_debt']
-        
-        # === INCOME (PENDAPATAN) ===
-        
-        # 5. Sales Revenue (Pendapatan Penjualan)
-        if self.category_context:
+        try:
+            cursor = conn.cursor()
+            
+            # Default to current month
+            if not start_date:
+                today = datetime.now()
+                start_date = today.replace(day=1).strftime('%Y-%m-%d')
+            if not end_date:
+                end_date = datetime.now().strftime('%Y-%m-%d')
+            
+            # Build category filter
+            cat_filter = ""
+            cat_params = []
+            if self.category_context:
+                cat_filter = "AND category_type = ?"
+                cat_params = [self.category_context]
+            
+            # === ASSETS (AKTIVA) ===
+            
+            # 1. Inventory Value (Nilai Persediaan)
+            cursor.execute(f"""
+                SELECT COALESCE(SUM(stock * buy_price), 0) as value
+                FROM warehouse
+                WHERE 1=1 {cat_filter.replace('category_type', 'category_type')}
+            """, cat_params)
+            inventory_value = cursor.fetchone()['value']
+            
+            # 2. Total Items Count
+            cursor.execute(f"""
+                SELECT COUNT(*), COALESCE(SUM(stock), 0) as total_stock
+                FROM warehouse
+                WHERE 1=1 {cat_filter}
+            """, cat_params)
+            row = cursor.fetchone()
+            total_items = row[0]
+            total_stock = row['total_stock']
+            
+            # 3. Outstanding Loans (Piutang)
             cursor.execute("""
-                SELECT 
-                    COUNT(*) as count,
-                    COALESCE(SUM(total_price), 0) as revenue,
-                    COALESCE(SUM(qty), 0) as items_sold
-                FROM transactions
-                WHERE DATE(date) BETWEEN ? AND ? AND category_type = ?
-            """, [start_date, end_date, self.category_context])
-        else:
+                SELECT COALESCE(SUM(total_amount - paid_amount), 0) as outstanding
+                FROM loans
+                WHERE status = 'Aktif'
+            """)
+            outstanding_loans = cursor.fetchone()['outstanding']
+            
+            # 4. Bad Debts (Piutang Macet)
             cursor.execute("""
-                SELECT 
-                    COUNT(*) as count,
-                    COALESCE(SUM(total_price), 0) as revenue,
-                    COALESCE(SUM(qty), 0) as items_sold
-                FROM transactions
-                WHERE DATE(date) BETWEEN ? AND ?
+                SELECT COALESCE(SUM(total_amount - paid_amount), 0) as bad_debt
+                FROM loans
+                WHERE status = 'Macet'
+            """)
+            bad_debts = cursor.fetchone()['bad_debt']
+            
+            # === INCOME (PENDAPATAN) ===
+            
+            # 5. Sales Revenue (Pendapatan Penjualan)
+            if self.category_context:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as count,
+                        COALESCE(SUM(total_price), 0) as revenue,
+                        COALESCE(SUM(qty), 0) as items_sold
+                    FROM transactions
+                    WHERE DATE(date) BETWEEN ? AND ? AND category_type = ?
+                """, [start_date, end_date, self.category_context])
+            else:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as count,
+                        COALESCE(SUM(total_price), 0) as revenue,
+                        COALESCE(SUM(qty), 0) as items_sold
+                    FROM transactions
+                    WHERE DATE(date) BETWEEN ? AND ?
+                """, [start_date, end_date])
+            sales_row = cursor.fetchone()
+            sales_count = sales_row['count']
+            sales_revenue = sales_row['revenue']
+            items_sold = sales_row['items_sold']
+            
+            # 6. Calculate COGS (Harga Pokok Penjualan)
+            if self.category_context:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(t.qty * w.buy_price), 0) as cogs
+                    FROM transactions t
+                    JOIN warehouse w ON t.item_id = w.id
+                    WHERE DATE(t.date) BETWEEN ? AND ? AND t.category_type = ?
+                """, [start_date, end_date, self.category_context])
+            else:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(t.qty * w.buy_price), 0) as cogs
+                    FROM transactions t
+                    JOIN warehouse w ON t.item_id = w.id
+                    WHERE DATE(t.date) BETWEEN ? AND ?
+                """, [start_date, end_date])
+            cogs = cursor.fetchone()['cogs']
+            
+            # 7. Gross Profit (Laba Kotor)
+            gross_profit = sales_revenue - cogs
+            
+            # 8. Loan Interest Received (Pendapatan Bunga Pinjaman)
+            cursor.execute("""
+                SELECT COALESCE(SUM(
+                    CASE WHEN l.total_amount > 0 AND l.total_amount > l.principal 
+                         THEN lp.amount * ((l.total_amount - l.principal) * 1.0 / l.total_amount)
+                         ELSE 0 
+                    END
+                ), 0) as interest,
+                COALESCE(SUM(lp.amount), 0) as total_payments
+                FROM loan_payments lp
+                JOIN loans l ON lp.loan_id = l.id
+                WHERE DATE(lp.payment_date) BETWEEN ? AND ?
             """, [start_date, end_date])
-        sales_row = cursor.fetchone()
-        sales_count = sales_row['count']
-        sales_revenue = sales_row['revenue']
-        items_sold = sales_row['items_sold']
-        
-        # 6. Calculate COGS (Harga Pokok Penjualan)
-        if self.category_context:
-            cursor.execute("""
-                SELECT COALESCE(SUM(t.qty * w.buy_price), 0) as cogs
-                FROM transactions t
-                JOIN warehouse w ON t.item_id = w.id
-                WHERE DATE(t.date) BETWEEN ? AND ? AND t.category_type = ?
-            """, [start_date, end_date, self.category_context])
-        else:
-            cursor.execute("""
-                SELECT COALESCE(SUM(t.qty * w.buy_price), 0) as cogs
-                FROM transactions t
-                JOIN warehouse w ON t.item_id = w.id
-                WHERE DATE(t.date) BETWEEN ? AND ?
-            """, [start_date, end_date])
-        cogs = cursor.fetchone()['cogs']
-        
-        # 7. Gross Profit (Laba Kotor)
-        gross_profit = sales_revenue - cogs
-        
-        # 8. Loan Interest Received (Pendapatan Bunga Pinjaman)
-        cursor.execute("""
-            SELECT COALESCE(SUM(
-                CASE WHEN l.total_amount > 0 AND l.total_amount > l.principal 
-                     THEN lp.amount * ((l.total_amount - l.principal) * 1.0 / l.total_amount)
-                     ELSE 0 
-                END
-            ), 0) as interest,
-            COALESCE(SUM(lp.amount), 0) as total_payments
-            FROM loan_payments lp
-            JOIN loans l ON lp.loan_id = l.id
-            WHERE DATE(lp.payment_date) BETWEEN ? AND ?
-        """, [start_date, end_date])
-        row_lp = cursor.fetchone()
-        loan_interest_received = row_lp['interest'] if row_lp else 0
-        loan_payments_total = row_lp['total_payments'] if row_lp else 0
-        
-        # === MUTATIONS SUMMARY ===
-        
-        # 9. Stock Mutations
-        if self.category_context:
-            cursor.execute("""
-                SELECT wm.type, COALESCE(SUM(wm.qty), 0) as total
-                FROM warehouse_mutation wm
-                JOIN warehouse w ON wm.item_id = w.id
-                WHERE DATE(wm.date) BETWEEN ? AND ? AND w.category_type = ?
-                GROUP BY wm.type
-            """, [start_date, end_date, self.category_context])
-        else:
-            cursor.execute("""
-                SELECT type, COALESCE(SUM(qty), 0) as total
-                FROM warehouse_mutation
-                WHERE DATE(date) BETWEEN ? AND ?
-                GROUP BY type
-            """, [start_date, end_date])
-        
-        mutations = {row['type']: row['total'] for row in cursor.fetchall()}
-        
-        conn.close()
+            row_lp = cursor.fetchone()
+            loan_interest_received = row_lp['interest'] if row_lp else 0
+            loan_payments_total = row_lp['total_payments'] if row_lp else 0
+            
+            # === MUTATIONS SUMMARY ===
+            
+            # 9. Stock Mutations
+            if self.category_context:
+                cursor.execute("""
+                    SELECT wm.type, COALESCE(SUM(wm.qty), 0) as total
+                    FROM warehouse_mutation wm
+                    JOIN warehouse w ON wm.item_id = w.id
+                    WHERE DATE(wm.date) BETWEEN ? AND ? AND w.category_type = ?
+                    GROUP BY wm.type
+                """, [start_date, end_date, self.category_context])
+            else:
+                cursor.execute("""
+                    SELECT type, COALESCE(SUM(qty), 0) as total
+                    FROM warehouse_mutation
+                    WHERE DATE(date) BETWEEN ? AND ?
+                    GROUP BY type
+                """, [start_date, end_date])
+            
+            mutations = {row['type']: row['total'] for row in cursor.fetchall()}
+        finally:
+            conn.close()
         
         # Calculate totals
         total_assets = inventory_value + outstanding_loans

@@ -1,5 +1,5 @@
 """
-Shared decorators for Koperasi Brimob
+Shared decorators for Sistem Koperasi
 Includes error handling and logging decorators.
 """
 import functools
@@ -7,7 +7,14 @@ import traceback
 from app.utils.error_handler import log_custom_error
 
 def handle_db_errors(func):
-    """Decorator to catch and log database errors with user-friendly popups"""
+    """
+    Decorator to catch and log database errors with user-friendly popups.
+    Returns:
+    - dict {'success': False, 'message': ...} if func returns dict or mutates
+    - list [] if func return type annotation is list
+    - int 0 if func return type annotation is int
+    - None for others
+    """
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -31,5 +38,14 @@ def handle_db_errors(func):
             error_msg = f"Kesalahan Database: {user_msg}"
             details = traceback.format_exc()
             log_custom_error(error_msg, details)
+            
+            # Check return annotation for type safety
+            ret_type = func.__annotations__.get('return', None)
+            if ret_type is list:
+                return []
+            elif ret_type is int:
+                return 0
+            elif ret_type is None:
+                return None
             return {"success": False, "message": user_msg}
     return wrapper

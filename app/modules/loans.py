@@ -187,62 +187,74 @@ class LoanManager:
         due_date = (datetime.now() + timedelta(days=duration_months * 30)).strftime('%Y-%m-%d')
         
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Check if member exists
-        cursor.execute("SELECT name FROM members WHERE id = ?", (member_id,))
-        member = cursor.fetchone()
-        if not member:
+        try:
+            cursor = conn.cursor()
+            
+            # Check if member exists
+            cursor.execute("SELECT name FROM members WHERE id = ?", (member_id,))
+            member = cursor.fetchone()
+            if not member:
+                return {"success": False, "message": "Anggota tidak ditemukan"}
+            
+            cursor.execute("PRAGMA table_info(loans)")
+            cols = [c[1] for c in cursor.fetchall()]
+            
+            if 'amount' in cols:
+                cursor.execute(
+                    """INSERT INTO loans 
+                       (member_id, amount, principal, interest_rate, duration_months, 
+                        total_amount, monthly_payment, due_date, notes)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (member_id, amount, amount, interest_rate, duration_months,
+                     total_amount, monthly_payment, due_date, notes)
+                )
+            else:
+                cursor.execute(
+                    """INSERT INTO loans 
+                       (member_id, principal, interest_rate, duration_months, 
+                        total_amount, monthly_payment, due_date, notes)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (member_id, amount, interest_rate, duration_months,
+                     total_amount, monthly_payment, due_date, notes)
+                )
+            loan_id = cursor.lastrowid
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "LOAN", "CREATE",
+                "loan", loan_id, None,
+                {"member_id": member_id, "principal": amount, "total": total_amount},
+                f"Pinjaman baru untuk {member['name']}: Rp {amount:,.0f} "
+                f"(Total: Rp {total_amount:,.0f}, Cicilan: Rp {monthly_payment:,.0f}/bln)", "INFO"
+            )
+            
+            return {
+                "success": True, 
+                "message": f"Pinjaman berhasil dibuat!\n"
+                          f"Total: Rp {total_amount:,.0f}\n"
+                          f"Cicilan: Rp {monthly_payment:,.0f}/bulan",
+                "loan_id": loan_id,
+                "id": loan_id,
+                "total_amount": total_amount,
+                "monthly_payment": monthly_payment
+            }
+        finally:
             conn.close()
-            return {"success": False, "message": "Anggota tidak ditemukan"}
-        
-        cursor.execute("PRAGMA table_info(loans)")
-        cols = [c[1] for c in cursor.fetchall()]
-        
-        if 'amount' in cols:
-            cursor.execute(
-                """INSERT INTO loans 
-                   (member_id, amount, principal, interest_rate, duration_months, 
-                    total_amount, monthly_payment, due_date, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (member_id, amount, amount, interest_rate, duration_months,
-                 total_amount, monthly_payment, due_date, notes)
-            )
-        else:
-            cursor.execute(
-                """INSERT INTO loans 
-                   (member_id, principal, interest_rate, duration_months, 
-                    total_amount, monthly_payment, due_date, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (member_id, amount, interest_rate, duration_months,
-                 total_amount, monthly_payment, due_date, notes)
-            )
-        loan_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "LOAN", "CREATE",
-            "loan", loan_id, None,
-            {"member_id": member_id, "principal": amount, "total": total_amount},
-            f"Pinjaman baru untuk {member['name']}: Rp {amount:,.0f} "
-            f"(Total: Rp {total_amount:,.0f}, Cicilan: Rp {monthly_payment:,.0f}/bln)", "INFO"
-        )
-        
-        return {
-            "success": True, 
-            "message": f"Pinjaman berhasil dibuat!\n"
-                      f"Total: Rp {total_amount:,.0f}\n"
-                      f"Cicilan: Rp {monthly_payment:,.0f}/bulan",
-            "loan_id": loan_id,
-            "total_amount": total_amount,
-            "monthly_payment": monthly_payment
-        }
     
     @handle_db_errors
     def update_loan(self, loan_id: int, amount: float, interest_rate: float, 
                     duration_months: int, notes: str = "") -> dict:
-        """Update existing loan with new calculations"""
+        """Update existing loan with new calculations and status sync"""
+        try:
+            amount = float(amount)
+            interest_rate = float(interest_rate)
+            duration_months = int(duration_months)
+        except (ValueError, TypeError):
+            return {"success": False, "message": "Nominal, bunga, dan durasi harus berupa angka valid"}
+
+        if amount <= 0 or duration_months <= 0 or interest_rate < 0:
+            return {"success": False, "message": "Nominal dan durasi pinjaman harus lebih dari 0"}
+
         sim = self.simulate_loan(amount, interest_rate, duration_months)
         if not sim['success']:
             return sim
@@ -251,38 +263,74 @@ class LoanManager:
         monthly_payment = sim['monthly_payment']
         
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("PRAGMA table_info(loans)")
-        cols = [c[1] for c in cursor.fetchall()]
-        
-        if 'amount' in cols:
-            cursor.execute(
-                """UPDATE loans 
-                   SET amount=?, principal=?, interest_rate=?, duration_months=?, 
-                       total_amount=?, monthly_payment=?, notes=?
-                   WHERE id=?""",
-                (amount, amount, interest_rate, duration_months,
-                 total_amount, monthly_payment, notes, loan_id)
+        try:
+            cursor = conn.cursor()
+            
+            # Fetch existing loan
+            cursor.execute("SELECT paid_amount, created_at FROM loans WHERE id = ?", (loan_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "message": "Pinjaman tidak ditemukan"}
+                
+            paid_amount = row['paid_amount'] or 0
+            created_at = row['created_at'] or datetime.now().strftime('%Y-%m-%d')
+            
+            # Recalculate due date from creation date or today
+            try:
+                base_dt = datetime.strptime(str(created_at)[:10], '%Y-%m-%d')
+            except Exception:
+                base_dt = datetime.now()
+            new_due_date = (base_dt + timedelta(days=duration_months * 30)).strftime('%Y-%m-%d')
+            
+            # Recalculate status
+            new_status = 'Lunas' if paid_amount >= total_amount else 'Aktif'
+            
+            cursor.execute("PRAGMA table_info(loans)")
+            cols = [c[1] for c in cursor.fetchall()]
+            
+            if 'amount' in cols:
+                cursor.execute(
+                    """UPDATE loans 
+                       SET amount=?, principal=?, interest_rate=?, duration_months=?, 
+                           total_amount=?, monthly_payment=?, due_date=?, status=?, notes=?
+                       WHERE id=?""",
+                    (amount, amount, interest_rate, duration_months,
+                     total_amount, monthly_payment, new_due_date, new_status, notes, loan_id)
+                )
+            else:
+                cursor.execute(
+                    """UPDATE loans 
+                       SET principal=?, interest_rate=?, duration_months=?, 
+                           total_amount=?, monthly_payment=?, due_date=?, status=?, notes=?
+                       WHERE id=?""",
+                    (amount, interest_rate, duration_months,
+                     total_amount, monthly_payment, new_due_date, new_status, notes, loan_id)
+                )
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "LOAN", "UPDATE",
+                "loan", loan_id, None,
+                {"principal": amount, "total": total_amount, "status": new_status},
+                f"Update data pinjaman ID {loan_id}: Total Rp {total_amount:,.0f}, Status: {new_status}", "INFO"
             )
-        else:
-            cursor.execute(
-                """UPDATE loans 
-                   SET principal=?, interest_rate=?, duration_months=?, 
-                       total_amount=?, monthly_payment=?, notes=?
-                   WHERE id=?""",
-                (amount, interest_rate, duration_months,
-                 total_amount, monthly_payment, notes, loan_id)
-            )
-        conn.commit()
-        conn.close()
-        
-        return {"success": True, "message": "Pinjaman berhasil diupdate"}
+            
+            return {"success": True, "message": "Pinjaman berhasil diupdate"}
+        finally:
+            conn.close()
     
     @handle_db_errors
     def record_payment(self, loan_id: int, amount: float, payment_method: str = "Tunai", 
-                       notes: str = "") -> dict:
-        """Record a payment for a loan with payment method"""
+                        notes: str = "") -> dict:
+        """Record a payment for a loan with atomic update and validation"""
+        try:
+            amount = float(amount)
+        except (ValueError, TypeError):
+            return {"success": False, "message": "Jumlah pembayaran harus berupa angka"}
+
+        if amount <= 0:
+            return {"success": False, "message": "Jumlah pembayaran harus lebih dari 0"}
+
         loan = self.get_loan_by_id(loan_id)
         if not loan:
             return {"success": False, "message": "Pinjaman tidak ditemukan"}
@@ -294,45 +342,55 @@ class LoanManager:
         if amount > remaining:
             return {"success": False, "message": f"Jumlah melebihi sisa pinjaman (Rp {remaining:,.0f})"}
         
-        new_paid = loan['paid_amount'] + amount
-        new_status = 'Lunas' if new_paid >= loan['total_amount'] else 'Aktif'
-        
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Update loan
-        cursor.execute(
-            "UPDATE loans SET paid_amount = ?, status = ? WHERE id = ?",
-            (new_paid, new_status, loan_id)
-        )
-        
-        # Record payment with method
-        cursor.execute(
-            """INSERT INTO loan_payments (loan_id, amount, payment_method, notes)
-               VALUES (?, ?, ?, ?)""",
-            (loan_id, amount, payment_method, notes or f"Pembayaran angsuran via {payment_method}")
-        )
-        
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "LOAN", "UPDATE",
-            "loan", loan_id, 
-            {"paid": loan['paid_amount'], "status": loan['status']},
-            {"paid": new_paid, "status": new_status},
-            f"Pembayaran pinjaman ID {loan_id}: Rp {amount:,.0f} via {payment_method}", "INFO"
-        )
-        
-        remaining_after = remaining - amount
-        status_msg = "🎉 LUNAS!" if new_status == 'Lunas' else f"Sisa: Rp {remaining_after:,.0f}"
-        
-        return {
-            "success": True,
-            "message": f"Pembayaran Rp {amount:,.0f} berhasil dicatat!\n{status_msg}",
-            "new_status": new_status,
-            "remaining": remaining_after
-        }
+        try:
+            cursor = conn.cursor()
+            
+            # Atomic update
+            cursor.execute(
+                """UPDATE loans 
+                   SET paid_amount = paid_amount + ?,
+                       status = CASE WHEN paid_amount + ? >= total_amount THEN 'Lunas' ELSE 'Aktif' END
+                   WHERE id = ? AND (total_amount - paid_amount) >= ?""",
+                (amount, amount, loan_id, amount)
+            )
+            if cursor.rowcount == 0:
+                return {"success": False, "message": "Gagal: Pembayaran melebihi sisa pinjaman atau status pinjaman berubah!"}
+            
+            # Record payment in payments table
+            cursor.execute(
+                """INSERT INTO loan_payments (loan_id, amount, payment_method, notes)
+                   VALUES (?, ?, ?, ?)""",
+                (loan_id, amount, payment_method, notes or f"Pembayaran angsuran via {payment_method}")
+            )
+            
+            conn.commit()
+            
+            # Fetch updated values for response
+            cursor.execute("SELECT total_amount, paid_amount, status FROM loans WHERE id = ?", (loan_id,))
+            updated_row = cursor.fetchone()
+            new_paid = updated_row['paid_amount']
+            new_status = updated_row['status']
+            remaining_after = updated_row['total_amount'] - new_paid
+            
+            log_audit(
+                self.current_user, "LOAN", "UPDATE",
+                "loan", loan_id, 
+                {"paid": loan['paid_amount'], "status": loan['status']},
+                {"paid": new_paid, "status": new_status},
+                f"Pembayaran pinjaman ID {loan_id}: Rp {amount:,.0f} via {payment_method}", "INFO"
+            )
+            
+            status_msg = "🎉 LUNAS!" if new_status == 'Lunas' else f"Sisa: Rp {remaining_after:,.0f}"
+            
+            return {
+                "success": True,
+                "message": f"Pembayaran Rp {amount:,.0f} berhasil dicatat!\n{status_msg}",
+                "new_status": new_status,
+                "remaining": remaining_after
+            }
+        finally:
+            conn.close()
 
     def make_payment(self, loan_id: int, amount: float, description: str = "") -> dict:
         """Record a payment for a loan (backward compatibility)"""
@@ -361,22 +419,24 @@ class LoanManager:
             return {"success": False, "message": "Pinjaman tidak ditemukan"}
         
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE loans SET status = 'Macet' WHERE id = ?",
-            (loan_id,)
-        )
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "LOAN", "UPDATE",
-            "loan", loan_id, 
-            {"status": loan['status']}, {"status": "Macet"},
-            f"Pinjaman ID {loan_id} ditandai macet", "WARNING"
-        )
-        
-        return {"success": True, "message": "Pinjaman ditandai sebagai macet"}
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE loans SET status = 'Macet' WHERE id = ?",
+                (loan_id,)
+            )
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "LOAN", "UPDATE",
+                "loan", loan_id, 
+                {"status": loan['status']}, {"status": "Macet"},
+                f"Pinjaman ID {loan_id} ditandai macet", "WARNING"
+            )
+            
+            return {"success": True, "message": "Pinjaman ditandai sebagai macet"}
+        finally:
+            conn.close()
     
     @handle_db_errors
     def get_statistics(self) -> dict:

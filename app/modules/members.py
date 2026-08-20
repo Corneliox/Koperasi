@@ -195,65 +195,67 @@ class MemberManager:
                       membership_status: str = "Anggota Koperasi") -> dict:
         """Update member data"""
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Check if NRP already exists for other member
-        if nrp:
+        try:
+            cursor = conn.cursor()
+            
+            # Check if NRP already exists for other member
+            if nrp:
+                cursor.execute(
+                    "SELECT id FROM members WHERE nrp = ? AND id != ?", 
+                    (nrp, member_id)
+                )
+                if cursor.fetchone():
+                    return {"success": False, "message": "NRP sudah digunakan anggota lain"}
+            
             cursor.execute(
-                "SELECT id FROM members WHERE nrp = ? AND id != ?", 
-                (nrp, member_id)
+                """UPDATE members 
+                   SET name=?, rank=?, unit=?, nrp=?, phone=?, address=?, membership_status=?
+                   WHERE id=?""",
+                (name, rank, unit, nrp, phone, address, membership_status, member_id)
             )
-            if cursor.fetchone():
-                conn.close()
-                return {"success": False, "message": "NRP sudah digunakan anggota lain"}
-        
-        cursor.execute(
-            """UPDATE members 
-               SET name=?, rank=?, unit=?, nrp=?, phone=?, address=?, membership_status=?
-               WHERE id=?""",
-            (name, rank, unit, nrp, phone, address, membership_status, member_id)
-        )
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "MEMBER", "UPDATE",
-            "member", member_id, None, None,
-            f"Edit anggota ID {member_id}: {name} ({membership_status})", "INFO"
-        )
-        
-        return {"success": True, "message": "Data anggota berhasil diupdate"}
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "MEMBER", "UPDATE",
+                "member", member_id, None, None,
+                f"Edit anggota ID {member_id}: {name} ({membership_status})", "INFO"
+            )
+            
+            return {"success": True, "message": "Data anggota berhasil diupdate"}
+        finally:
+            conn.close()
     
     @handle_db_errors
     def delete_member(self, member_id: int) -> dict:
-        """Delete member"""
+        """Delete member with check for active loans and bad debts"""
         member = self.get_member_by_id(member_id)
         if not member:
             return {"success": False, "message": "Anggota tidak ditemukan"}
         
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Check if member has active loans
-        cursor.execute(
-            "SELECT COUNT(*) FROM loans WHERE member_id = ? AND status = 'Aktif'",
-            (member_id,)
-        )
-        if cursor.fetchone()[0] > 0:
+        try:
+            cursor = conn.cursor()
+            
+            # Check if member has active or bad debt loans
+            cursor.execute(
+                "SELECT COUNT(*) FROM loans WHERE member_id = ? AND status IN ('Aktif', 'Macet')",
+                (member_id,)
+            )
+            if cursor.fetchone()[0] > 0:
+                return {"success": False, "message": "Anggota memiliki kewajiban pinjaman (Aktif atau Macet)"}
+            
+            cursor.execute("DELETE FROM members WHERE id = ?", (member_id,))
+            conn.commit()
+            
+            log_audit(
+                self.current_user, "MEMBER", "DELETE",
+                "member", member_id, member, None,
+                f"Hapus anggota: {member['name']} (ID: {member_id})", "WARNING"
+            )
+            
+            return {"success": True, "message": "Anggota berhasil dihapus"}
+        finally:
             conn.close()
-            return {"success": False, "message": "Anggota memiliki pinjaman aktif"}
-        
-        cursor.execute("DELETE FROM members WHERE id = ?", (member_id,))
-        conn.commit()
-        conn.close()
-        
-        log_audit(
-            self.current_user, "MEMBER", "DELETE",
-            "member", member_id, member, None,
-            f"Hapus anggota: {member['name']} (ID: {member_id})", "WARNING"
-        )
-        
-        return {"success": True, "message": "Anggota berhasil dihapus"}
     
     @handle_db_errors
     def get_member_transactions(self, member_id: int, category_type: str = None) -> list:

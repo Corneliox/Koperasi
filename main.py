@@ -1,10 +1,8 @@
 """
-Koperasi Brimob - Sistem Manajemen Inventaris & Keuangan
+Koperasi - Sistem Manajemen Inventaris & Keuangan
 Main Application Entry Point
 
 Compatible: Windows 7 x32 - Windows 11 x64
-REFACTORED: Added Financial Reports, Fixed Change Division dialog
-PHASE 3: Added Easter Egg reset, Admin logs dropdown
 """
 import os
 import sys
@@ -16,28 +14,26 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-# Enable DPI awareness for Windows
+# Enable DPI awareness for Windows safely
 if sys.platform == 'win32':
     try:
         # Log OS Version for Debugging
-        print(f"Starting Koperasi Brimob on: {platform.system()} {platform.release()} {platform.version()} ({platform.machine()})")
-        print(f"Python: {sys.version}")
+        print(f"Starting Koperasi on: {platform.system()} {platform.release()} {platform.version()} ({platform.machine()})")
         print(f"Python: {sys.version}")
         
         # Check if we are on Windows 8.1 (6.3) or higher for shcore
-        # Windows 7 is 6.1, Windows 8 is 6.2
-        if sys.getwindowsversion().major > 6 or (sys.getwindowsversion().major == 6 and sys.getwindowsversion().minor >= 3):
-            try:
-                # SetProcessDpiAwareness(PROCESS_SYSTEM_DPI_AWARE=1)
-                shcore = ctypes.windll.shcore
-                # Verify argument types and values against C function signatures
-                shcore.SetProcessDpiAwareness.argtypes = [ctypes.c_int]
-                shcore.SetProcessDpiAwareness(1)
-            except Exception:
-                # Fallback to user32 if shcore fails
+        if hasattr(sys, 'getwindowsversion'):
+            win_ver = sys.getwindowsversion()
+            if win_ver.major > 6 or (win_ver.major == 6 and win_ver.minor >= 3):
+                try:
+                    shcore = ctypes.windll.shcore
+                    shcore.SetProcessDpiAwareness.argtypes = [ctypes.c_int]
+                    shcore.SetProcessDpiAwareness(1)
+                except Exception:
+                    ctypes.windll.user32.SetProcessDPIAware()
+            else:
                 ctypes.windll.user32.SetProcessDPIAware()
         else:
-            # Windows 7 and older
             ctypes.windll.user32.SetProcessDPIAware()
     except Exception:
         pass
@@ -51,11 +47,12 @@ from app.utils.emoji_fix import fix_emoji
 def patch_ctk_for_win7():
     """Apply global monkey-patches for Windows 7 compatibility"""
     try:
-        import sys
+        if sys.platform != 'win32' or not hasattr(sys, 'getwindowsversion'):
+            return
         is_win7 = sys.getwindowsversion().major == 6 and sys.getwindowsversion().minor == 1
         if not is_win7:
             return
-    except:
+    except Exception:
         return
 
     # Patch CTkLabel
@@ -106,15 +103,17 @@ ctk.set_default_color_theme("blue")
 APP_VERSION = "4.3"
 
 
-class KoperasiBrimobApp(ctk.CTk):
+class KoperasiApp(ctk.CTk):
     """Main Application Window"""
     
     def __init__(self):
         super().__init__()
         
         # Windows Version Detection
-        win_ver = sys.getwindowsversion()
-        is_win7 = win_ver.major == 6 and win_ver.minor == 1
+        is_win7 = False
+        if sys.platform == 'win32' and hasattr(sys, 'getwindowsversion'):
+            win_ver = sys.getwindowsversion()
+            is_win7 = (win_ver.major == 6 and win_ver.minor == 1)
         
         # Optimization for Win7 / 32-bit
         if is_win7:
@@ -161,7 +160,7 @@ class KoperasiBrimobApp(ctk.CTk):
         self.minsize(1000, 600)
         
         # Win7 Compatibility: Re-apply geometry after a short delay to ensure it sticks
-        if win_ver.major == 6 and win_ver.minor == 1:
+        if is_win7:
             self.after(100, lambda: self.geometry(f"{window_width}x{window_height}+{x}+{y}"))
 
         # Configure main grid
@@ -198,44 +197,69 @@ class KoperasiBrimobApp(ctk.CTk):
         """Show custom confirmation before closing the entire application"""
         self.handle_exit_logic(is_logout=False)
 
-    def handle_exit_logic(self, is_logout=False):
-        """Unified logic for exit and logout with Save All option"""
+    def handle_exit_logic(self, is_logout: bool = False):
+        """Unified confirmation logic for Logout and Application Exit"""
         dialog = CustomExitDialog(self, is_logout=is_logout)
         self.wait_window(dialog)
         
-        if dialog.result == "save_proceed":
+        choice = dialog.result
+        
+        if choice == "cancel":
+            return
+            
+        elif choice == "save_proceed":
+            # Attempt to save all open dialogs
             self.is_quitting = True
-            if self.save_all_dialogs():
-                tkinter.messagebox.showinfo("Sukses", "Semua data telah berhasil disimpan.")
-                if is_logout:
-                    self.is_quitting = False # Reset if just logout
-                    self.perform_logout()
-                else:
-                    self.destroy()
-                    sys.exit(0)
-            else:
-                self.is_quitting = False # Reset if failed
-        elif dialog.result == "proceed_only":
-            if is_logout:
-                self.perform_logout()
-            else:
-                self.destroy()
-                sys.exit(0)
-        # If 'cancel' or None, do nothing
+            all_saved = self.save_all_dialogs()
+            
+            if not all_saved:
+                if not tkinter.messagebox.askyesno(
+                    "Peringatan", 
+                    "Sebagian data mungkin tidak dapat disimpan secara otomatis.\nApakah Anda tetap ingin melanjutkan?"
+                ):
+                    self.is_quitting = False
+                    return
+            
+            self.finalize_exit(is_logout)
+            
+        elif choice == "proceed_only":
+            # Close immediately without saving
+            self.is_quitting = True
+            self.finalize_exit(is_logout)
+
+    def finalize_exit(self, is_logout: bool):
+        """Complete the logout or exit process"""
+        # Close all active dialogs safely
+        for key, win in list(self.active_windows.items()):
+            try:
+                if win.winfo_exists():
+                    win.destroy()
+            except:
+                pass
+        self.active_windows.clear()
+        
+        if is_logout:
+            self.is_quitting = False
+            self.perform_logout()
+        else:
+            if self.current_user:
+                log_audit(
+                    self.current_user, "SYSTEM", "EXIT",
+                    None, None, None, None,
+                    f"User {self.current_user} keluar dari aplikasi", "INFO"
+                )
+            self.destroy()
 
     def save_all_dialogs(self) -> bool:
-        """Find all active dialogs and trigger their save methods. Returns True if all saved."""
+        """Find and trigger save() on all open dialogs recursively"""
         all_saved = True
-        
         try:
-            def find_dialogs(parent):
+            def find_dialogs(widget):
                 dialogs = []
                 try:
-                    for child in parent.winfo_children():
+                    for child in widget.winfo_children():
                         if isinstance(child, ctk.CTkToplevel):
                             dialogs.append(child)
-                        # Recurse into frames
-                        if hasattr(child, 'winfo_children'):
                             dialogs.extend(find_dialogs(child))
                 except:
                     pass # Widget might have been destroyed
@@ -295,15 +319,18 @@ class KoperasiBrimobApp(ctk.CTk):
                     sleep_step = min(wait_seconds, 60)
                     time.sleep(sleep_step)
                     wait_seconds -= sleep_step
-                    try:
-                        if not self.winfo_exists(): return
-                    except:
+                    if self.is_quitting:
                         return
+
+                if self.is_quitting:
+                    return
 
                 print("[SYSTEM] Executing daily data aggregation...")
                 self.execute_daily_report()
                 
             except Exception as e:
+                if self.is_quitting:
+                    return
                 print(f"[ERROR] Daily job error: {e}")
                 time.sleep(60)
 
@@ -311,54 +338,55 @@ class KoperasiBrimobApp(ctk.CTk):
         """Gathers stats from the last 24h and logs to audit/files"""
         from app.database.connection import get_connection
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        cursor.execute("SELECT COUNT(*), SUM(total_price), AVG(total_price) FROM transactions WHERE DATE(date) = ?", (yesterday,))
-        t_row = cursor.fetchone()
-        t_count = t_row[0] or 0
-        t_sum = t_row[1] or 0
-        t_avg = t_row[2] or 0
-        
-        cursor.execute("SELECT COUNT(*), SUM(amount) FROM loan_payments WHERE DATE(payment_date) = ?", (yesterday,))
-        lp_row = cursor.fetchone()
-        lp_count = lp_row[0] or 0
-        lp_sum = lp_row[1] or 0
-        
-        cursor.execute("SELECT id, total_price, item_id FROM transactions WHERE DATE(date) = ? AND total_price > 5000000", (yesterday,))
-        anomalies = cursor.fetchall()
-        anomaly_count = len(anomalies)
-        
-        conn.close()
-        
-        summary = (
-            f"=== LAPORAN HARIAN ({yesterday}) ===\n"
-            f"Total Transaksi: {t_count}\n"
-            f"Nilai Transaksi: Rp {t_sum:,.0f}\n"
-            f"Rata-rata: Rp {t_avg:,.0f}\n"
-            f"Pembayaran Pinjaman: {lp_count} (Total Rp {lp_sum:,.0f})\n"
-            f"Anomali Terdeteksi: {anomaly_count}\n"
-        )
-        
-        log_audit(
-            "SYSTEM", "REPORT", "SUMMARY", 
-            None, None, None, None,
-            f"Daily Aggregation Completed for {yesterday}. Total Sales: Rp {t_sum:,.0f}", "INFO"
-        )
-        
-        log_dir = os.path.join(os.getcwd(), "logs", "daily_reports")
-        os.makedirs(log_dir, exist_ok=True)
-        report_file = os.path.join(log_dir, f"report_{yesterday}.txt")
-        
-        with open(report_file, "w", encoding='utf-8') as f:
-            f.write(summary)
-            if anomaly_count > 0:
-                f.write("\nDETEKSI ANOMALI (> Rp 5,000,000):\n")
-                for a in anomalies:
-                    f.write(f"- Transaksi ID {a[0]}: Rp {a[1]:,.0f}\n")
-        
-        print(f"[SYSTEM] Daily report generated: {report_file}")
+        try:
+            cursor = conn.cursor()
+            
+            yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            cursor.execute("SELECT COUNT(*), SUM(total_price), AVG(total_price) FROM transactions WHERE DATE(date) = ?", (yesterday,))
+            t_row = cursor.fetchone()
+            t_count = t_row[0] or 0
+            t_sum = t_row[1] or 0
+            t_avg = t_row[2] or 0
+            
+            cursor.execute("SELECT COUNT(*), SUM(amount) FROM loan_payments WHERE DATE(payment_date) = ?", (yesterday,))
+            lp_row = cursor.fetchone()
+            lp_count = lp_row[0] or 0
+            lp_sum = lp_row[1] or 0
+            
+            cursor.execute("SELECT id, total_price, item_id FROM transactions WHERE DATE(date) = ? AND total_price > 5000000", (yesterday,))
+            anomalies = cursor.fetchall()
+            anomaly_count = len(anomalies)
+            
+            summary = (
+                f"=== LAPORAN HARIAN ({yesterday}) ===\n"
+                f"Total Transaksi: {t_count}\n"
+                f"Nilai Transaksi: Rp {t_sum:,.0f}\n"
+                f"Rata-rata: Rp {t_avg:,.0f}\n"
+                f"Pembayaran Pinjaman: {lp_count} (Total Rp {lp_sum:,.0f})\n"
+                f"Anomali Terdeteksi: {anomaly_count}\n"
+            )
+            
+            log_audit(
+                "SYSTEM", "REPORT", "SUMMARY", 
+                None, None, None, None,
+                f"Daily Aggregation Completed for {yesterday}. Total Sales: Rp {t_sum:,.0f}", "INFO"
+            )
+            
+            log_dir = os.path.join(os.getcwd(), "logs", "daily_reports")
+            os.makedirs(log_dir, exist_ok=True)
+            report_file = os.path.join(log_dir, f"report_{yesterday}.txt")
+            
+            with open(report_file, "w", encoding='utf-8') as f:
+                f.write(summary)
+                if anomaly_count > 0:
+                    f.write("\nDETEKSI ANOMALI (> Rp 5,000,000):\n")
+                    for a in anomalies:
+                        f.write(f"- Transaksi ID {a[0]}: Rp {a[1]:,.0f}\n")
+            
+            print(f"[SYSTEM] Daily report generated: {report_file}")
+        finally:
+            conn.close()
 
     def perform_logout(self):
         """Actual logout logic"""
@@ -374,26 +402,27 @@ class KoperasiBrimobApp(ctk.CTk):
         try:
             from app.database.connection import get_connection
             conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Check if settings table exists (it should now)
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
-            if not cursor.fetchone():
-                conn.close()
-                return
-
-            cursor.execute("SELECT value FROM settings WHERE key = 'version'")
-            row = cursor.fetchone()
-            last_version = row[0] if row else "0.0"
-            
-            if last_version != APP_VERSION:
-                # Show update popup
-                self.show_update_notes(last_version, APP_VERSION)
+            try:
+                cursor = conn.cursor()
                 
-                # Update version in DB
-                cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('version', ?)", (APP_VERSION,))
-                conn.commit()
-            conn.close()
+                # Check if settings table exists (it should now)
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
+                if not cursor.fetchone():
+                    return
+
+                cursor.execute("SELECT value FROM settings WHERE key = 'version'")
+                row = cursor.fetchone()
+                last_version = row[0] if row else "0.0"
+                
+                if last_version != APP_VERSION:
+                    # Show update popup
+                    self.show_update_notes(last_version, APP_VERSION)
+                    
+                    # Update version in DB
+                    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('version', ?)", (APP_VERSION,))
+                    conn.commit()
+            finally:
+                conn.close()
         except Exception as e:
             print(f"Version check failed: {e}")
 
@@ -488,8 +517,8 @@ class KoperasiBrimobApp(ctk.CTk):
         
         ctk.CTkLabel(
             title_frame,
-            text="BRIMOB",
-            font=ctk.CTkFont(size=14),
+            text="SISTEM MANAJEMEN",
+            font=ctk.CTkFont(size=11),
             text_color="#888888"
         ).pack()
         
@@ -590,11 +619,14 @@ class KoperasiBrimobApp(ctk.CTk):
         window_key = "change_division"
         if window_key in self.active_windows:
             try:
-                self.active_windows[window_key].lift()
-                self.active_windows[window_key].focus_force()
-                return
-            except:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
                 pass
+            del self.active_windows[window_key]
         
         dialog = ChangeDivisionDialog(
             self,
@@ -609,9 +641,9 @@ class KoperasiBrimobApp(ctk.CTk):
         if window_key in self.active_windows:
             try:
                 self.active_windows[window_key].destroy()
-            except:
+            except Exception:
                 pass
-            del self.active_windows[window_key]
+            self.active_windows.pop(window_key, None)
     
     def on_division_changed(self, new_division: str):
         """Handle division change from dialog"""
@@ -639,12 +671,26 @@ class KoperasiBrimobApp(ctk.CTk):
         """Clear content frame"""
         if self.content_frame:
             for widget in self.content_frame.winfo_children():
-                widget.destroy()
+                try:
+                    widget.destroy()
+                except Exception:
+                    pass
     
     def clear_window(self):
-        """Clear entire window"""
+        """Clear entire window and close stale floating dialogs"""
+        for key, win in list(self.active_windows.items()):
+            try:
+                if win and win.winfo_exists():
+                    win.destroy()
+            except Exception:
+                pass
+        self.active_windows.clear()
+        
         for widget in self.winfo_children():
-            widget.destroy()
+            try:
+                widget.destroy()
+            except Exception:
+                pass
         self.sidebar = None
         self.content_frame = None
     
@@ -750,7 +796,10 @@ class KoperasiBrimobApp(ctk.CTk):
         
         # Reset counter after 2 seconds of inactivity
         if self.easter_egg_timer:
-            self.after_cancel(self.easter_egg_timer)
+            try:
+                self.after_cancel(self.easter_egg_timer)
+            except Exception:
+                pass
         self.easter_egg_timer = self.after(2000, self.reset_easter_egg)
         
         # Check if we hit 5 Ctrl+Clicks
@@ -760,34 +809,45 @@ class KoperasiBrimobApp(ctk.CTk):
     
     def reset_easter_egg(self):
         """Reset Easter Egg counter"""
+        if self.easter_egg_timer:
+            try:
+                self.after_cancel(self.easter_egg_timer)
+            except Exception:
+                pass
         self.easter_egg_clicks = 0
         self.easter_egg_timer = None
     
     def open_audit_logs(self):
-        """Open audit log viewer"""
+        """Open audit log viewer safely"""
         window_key = "audit_logs"
         if window_key in self.active_windows:
             try:
-                self.active_windows[window_key].lift()
-                self.active_windows[window_key].focus_force()
-                return
-            except:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
                 pass
+            del self.active_windows[window_key]
         
         dialog = AuditLogViewer(self, self.current_user)
         self.active_windows[window_key] = dialog
         dialog.protocol("WM_DELETE_WINDOW", lambda: self.close_dialog(window_key))
     
     def open_danger_reset_modal(self):
-        """Open the hidden danger reset modal (Easter Egg)"""
+        """Open the hidden danger reset modal (Easter Egg) safely"""
         window_key = "danger_reset"
         if window_key in self.active_windows:
             try:
-                self.active_windows[window_key].lift()
-                self.active_windows[window_key].focus_force()
-                return
-            except:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
                 pass
+            del self.active_windows[window_key]
         
         dialog = DangerResetModal(
             self,
@@ -876,9 +936,13 @@ class CustomExitDialog(ctk.CTkToplevel):
         self.destroy()
 
 
+# Compatibility alias
+KoperasiBrimobApp = KoperasiApp
+
+
 def main():
     """Application entry point"""
-    app = KoperasiBrimobApp()
+    app = KoperasiApp()
     app.mainloop()
 
 

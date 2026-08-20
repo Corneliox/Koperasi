@@ -362,12 +362,14 @@ class HistoryFrame(ctk.CTkFrame):
             widget.destroy()
         
         # Get filter values
+    def get_filter_params(self):
+        """Extract current filter parameters"""
         period = self.period_var.get()
         member_display = self.member_var.get()
         member_id = self.member_map.get(member_display)
         payment_method = self.payment_var.get()
         sort_by = self.sort_var.get()
-        search_text = self.search_entry.get().strip().lower()
+        search_text = self.search_entry.get().strip()
         
         # Calculate date range
         start_date = None
@@ -391,10 +393,31 @@ class HistoryFrame(ctk.CTkFrame):
         elif period == "Rentang Tanggal":
             start_date = self.start_date.get_date().strftime('%Y-%m-%d')
             end_date = self.end_date.get_date().strftime('%Y-%m-%d')
+            
+        return {
+            'member_id': member_id,
+            'start_date': start_date,
+            'end_date': end_date,
+            'payment_method': payment_method,
+            'search_text': search_text,
+            'sort_by': sort_by
+        }
+
+    def load_data(self):
+        """Load and display transactions based on filters with SQL-level pagination and sorting"""
+        # Clear table
+        for widget in self.scroll_frame.winfo_children():
+            widget.destroy()
         
-        # Calculate Pagination
+        params = self.get_filter_params()
+        
+        # Calculate Pagination at SQL level with all active filters
         total_count = self.transaction_manager.get_transaction_count(
-            member_id=member_id, start_date=start_date, end_date=end_date
+            member_id=params['member_id'],
+            start_date=params['start_date'],
+            end_date=params['end_date'],
+            payment_method=params['payment_method'],
+            search_text=params['search_text']
         )
         
         self.total_pages = max(1, (total_count + self.items_per_page - 1) // self.items_per_page)
@@ -404,38 +427,20 @@ class HistoryFrame(ctk.CTkFrame):
             
         offset = (self.current_page - 1) * self.items_per_page
         
-        # Fetch transactions
+        # Fetch filtered, sorted, and paginated transactions from SQL
         self.current_transactions = self.transaction_manager.get_transactions(
-            member_id=member_id,
-            start_date=start_date,
-            end_date=end_date,
+            member_id=params['member_id'],
+            start_date=params['start_date'],
+            end_date=params['end_date'],
+            payment_method=params['payment_method'],
+            search_text=params['search_text'],
+            sort_by=params['sort_by'],
             limit=self.items_per_page,
             offset=offset
         )
         
-        filtered = self.current_transactions
-        
-        # Filter by payment method
-        if payment_method != "Semua":
-            filtered = [t for t in filtered if t.get('payment_method', 'Tunai') == payment_method]
-        
-        # Filter by search text
-        if search_text:
-            filtered = [t for t in filtered if 
-                       search_text in (t.get('item_name', '') or '').lower() or
-                       search_text in (t.get('member_name', '') or '').lower()]
-        
-        # Apply sorting
-        if sort_by == "Qty (Tinggi)":
-            filtered.sort(key=lambda x: x.get('qty', 0), reverse=True)
-        elif sort_by == "Qty (Rendah)":
-            filtered.sort(key=lambda x: x.get('qty', 0))
-        elif sort_by == "Profit (Tinggi)":
-            filtered.sort(key=lambda x: self.calc_profit(x), reverse=True)
-        elif sort_by == "Profit (Rendah)":
-            filtered.sort(key=lambda x: self.calc_profit(x))
-        
-        self.sorted_transactions = filtered
+        self.sorted_transactions = self.current_transactions
+        filtered = self.sorted_transactions
         
         # Update UI Controls
         self.page_label.configure(text=f"{self.current_page} / {self.total_pages}")
@@ -566,35 +571,51 @@ class HistoryFrame(ctk.CTkFrame):
         """Apply current filters"""
         self.load_data()
     
+    def get_all_filtered_transactions(self) -> list:
+        """Fetch all transactions matching current filters (unpaginated for export)"""
+        params = self.get_filter_params()
+        return self.transaction_manager.get_transactions(
+            member_id=params['member_id'],
+            start_date=params['start_date'],
+            end_date=params['end_date'],
+            payment_method=params['payment_method'],
+            search_text=params['search_text'],
+            sort_by=params['sort_by'],
+            limit=100000,
+            offset=0
+        )
+
     def export_excel(self):
-        """Export current view to Excel"""
-        if not self.sorted_transactions:
+        """Export all transactions matching current filters to Excel"""
+        transactions = self.get_all_filtered_transactions()
+        if not transactions:
             messagebox.showwarning("Peringatan", "Tidak ada data untuk diexport!")
             return
         
         try:
             filepath = export_transactions_excel(
-                self.sorted_transactions,
+                transactions,
                 f"Transaksi_{self.category_context}"
             )
-            messagebox.showinfo("Sukses", f"File berhasil disimpan:\n{filepath}")
+            messagebox.showinfo("Sukses", f"File berhasil disimpan ({len(transactions)} transaksi):\n{filepath}")
         except Exception as e:
             messagebox.showerror("Error", f"Gagal export: {str(e)}")
     
     def export_pdf(self):
-        """Export current view to PDF"""
-        if not self.sorted_transactions:
+        """Export all transactions matching current filters to PDF"""
+        transactions = self.get_all_filtered_transactions()
+        if not transactions:
             messagebox.showwarning("Peringatan", "Tidak ada data untuk diexport!")
             return
         
         try:
             title = f"Laporan Transaksi - {self.category_context}"
             filepath = export_transactions_pdf(
-                self.sorted_transactions,
+                transactions,
                 title,
                 f"Transaksi_{self.category_context}"
             )
-            messagebox.showinfo("Sukses", f"File berhasil disimpan:\n{filepath}")
+            messagebox.showinfo("Sukses", f"File berhasil disimpan ({len(transactions)} transaksi):\n{filepath}")
         except Exception as e:
             messagebox.showerror("Error", f"Gagal export: {str(e)}")
 

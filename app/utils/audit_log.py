@@ -79,22 +79,26 @@ def log_audit(user: str, action_category: str, action_type: str,
     :param level: INFO, WARNING, DANGER, ERROR
     """
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Serialize dicts to JSON
-    old_json = json.dumps(old_value, default=str) if old_value else None
-    new_json = json.dumps(new_value, default=str) if new_value else None
-    
-    cursor.execute("""
-        INSERT INTO audit_log_immutable 
-        (user, action_category, action_type, entity_type, entity_id, 
-         old_value, new_value, details, level)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user, action_category, action_type, entity_type, entity_id,
-          old_json, new_json, details, level))
-    
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        
+        # Serialize dicts to JSON
+        old_json = json.dumps(old_value, default=str) if old_value else None
+        new_json = json.dumps(new_value, default=str) if new_value else None
+        
+        cursor.execute("""
+            INSERT INTO audit_log_immutable 
+            (user, action_category, action_type, entity_type, entity_id, 
+             old_value, new_value, details, level)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user, action_category, action_type, entity_type, entity_id,
+              old_json, new_json, details, level))
+        
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
 
 
 def get_audit_logs(limit: int = 500, user_filter: str = None,
@@ -107,60 +111,63 @@ def get_audit_logs(limit: int = 500, user_filter: str = None,
     :return: List of audit log entries
     """
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    query = "SELECT * FROM audit_log_immutable WHERE 1=1"
-    params = []
-    
-    if user_filter:
-        query += " AND user = ?"
-        params.append(user_filter)
-    
-    if category_filter:
-        query += " AND action_category = ?"
-        params.append(category_filter)
-    
-    if entity_type:
-        query += " AND entity_type = ?"
-        params.append(entity_type)
-    
-    if entity_id:
-        query += " AND entity_id = ?"
-        params.append(entity_id)
-    
-    if start_date:
-        query += " AND DATE(timestamp) >= ?"
-        params.append(start_date)
-    
-    if end_date:
-        query += " AND DATE(timestamp) <= ?"
-        params.append(end_date)
+    try:
+        cursor = conn.cursor()
         
-    if level_filter:
-        query += " AND level = ?"
-        params.append(level_filter)
-    
-    query += f" ORDER BY timestamp DESC LIMIT {limit}"
-    
-    cursor.execute(query, params)
-    logs = []
-    for row in cursor.fetchall():
-        log = dict(row)
-        # Parse JSON fields
-        if log.get('old_value'):
-            try:
-                log['old_value'] = json.loads(log['old_value'])
-            except:
-                pass
-        if log.get('new_value'):
-            try:
-                log['new_value'] = json.loads(log['new_value'])
-            except:
-                pass
-        logs.append(log)
-    
-    conn.close()
-    return logs
+        query = "SELECT * FROM audit_log_immutable WHERE 1=1"
+        params = []
+        
+        if user_filter:
+            query += " AND user = ?"
+            params.append(user_filter)
+        
+        if category_filter:
+            query += " AND action_category = ?"
+            params.append(category_filter)
+        
+        if entity_type:
+            query += " AND entity_type = ?"
+            params.append(entity_type)
+        
+        if entity_id:
+            query += " AND entity_id = ?"
+            params.append(entity_id)
+        
+        if start_date:
+            query += " AND DATE(timestamp) >= ?"
+            params.append(start_date)
+        
+        if end_date:
+            query += " AND DATE(timestamp) <= ?"
+            params.append(end_date)
+            
+        if level_filter:
+            query += " AND level = ?"
+            params.append(level_filter)
+        
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(int(limit) if limit else 500)
+        
+        cursor.execute(query, params)
+        logs = []
+        for row in cursor.fetchall():
+            log = dict(row)
+            # Parse JSON fields
+            if log.get('old_value'):
+                try:
+                    log['old_value'] = json.loads(log['old_value'])
+                except Exception:
+                    pass
+            if log.get('new_value'):
+                try:
+                    log['new_value'] = json.loads(log['new_value'])
+                except Exception:
+                    pass
+            logs.append(log)
+        
+        return logs
+    finally:
+        conn.close()
 
 
 def archive_old_logs(days: int = 90) -> dict:
@@ -266,7 +273,3 @@ def get_audit_statistics() -> dict:
         'today_logs': today,
         'unique_users': unique_users
     }
-
-
-# Initialize table on import
-init_audit_log_table()
