@@ -107,7 +107,7 @@ jobs:
           } elseif ("${{ inputs.release_tag }}" -ne "") {
             $tag = "${{ inputs.release_tag }}"
           } else {
-            $tag = "v4.3"
+            $tag = "v4.4"
           }
           Write-Host "Target Tag: $tag"
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -127,20 +127,21 @@ jobs:
             ## 🏛️ Sistem Koperasi Release ${{ steps.get_tag.outputs.tag }}
             ### 💻 Khusus Sistem Operasi Windows 10 / Windows 11 (64-Bit) - Offline / Lokal
             
-            Versi 4.3 menghadirkan sistem autentikasi pendaftaran akun baru mandiri, enkripsi password lokal yang aman, netralisasi antarmuka, serta isolasi eksekusi 100% offline.
+            Versi 4.4 menghadirkan perbaikan menyeluruh pada UI Lifecycle, mitigasi error rendering data kosong/None, akurasi Grand Total transaksi riwayat tanpa batas paginasi, dan sanitasi ketat input keuangan.
 
             ---
 
-            ### 🚀 Apa yang Baru di Versi Ini:
-            - **🔐 Sistem Autentikasi Register & Login Mandiri**: Pendaftaran akun pengguna mandiri dari layar awal dengan enkripsi password (SHA-256 + Salt). Akun pertama otomatis menjadi Super Administrator.
-            - **🏢 Antarmuka Netral & Fleksibel**: Pembersihan penamaan khusus menjadi sistem manajemen koperasi simpan pinjam dan kasir POS yang profesional.
-            - **⚡ Operasi 100% Offline / Mandiri**: Seluruh database, transaksi, struk, dan laporan tersimpan di penyimpanan lokal tanpa koneksi luar.
-            - **🛡️ Stabilitas Maksimal**: Sanitasi input angka, pencegahan force close saat pengetikan cepat, dan konkurensi SQLite WAL.
-            - **📊 Neraca & Struk Presisi**: Format struk kasir, invoice PDF, dan laporan keuangan neraca laba-rugi telah disinkronkan.
+            ### 🚀 Apa yang Baru di Versi 4.4:
+            - **🛡️ Stabilitas Modal Dialog & UI**: Mengamankan lifecycle window modal saat user membatalkan dan membuka kembali dialog (mencegah TclError).
+            - **📊 Perhitungan Grand Total Akurat**: Grand Total dan estimasi profit pada menu Riwayat kini menghitung seluruh data yang terfilter secara unpaginated.
+            - **💼 Proteksi Data Finansial**: Validasi cerdas string numerik pada form inventaris untuk mencegah manipulasi data stok/harga menjadi 0.
+            - **📈 Ketahanan Laporan Neraca**: Penanganan data kosong (`None`) pada laporan keuangan tanpa menimbulkan crash TypeError.
+            - **🧾 Bukti Pembelian Multi-Kategori**: Invoice dan struk transaksi tetap digenerate dengan benar saat kasir memproses barang campuran (Sembako & Taktikal).
+            - **⚡ Manajemen Koneksi Database**: Pembungkusan `try...finally` menyeluruh pada seluruh operasi database dan log audit.
 
             ---
 
             ### 📦 File Unduhan:
-            1. **Installer Setup (Disarankan)**: `Koperasi_Setup_v4.3.exe` (Instalasi otomatis + Shortcut Desktop).
+            1. **Installer Setup (Disarankan)**: `Koperasi_Setup_v4.4.exe` (Instalasi otomatis + Shortcut Desktop).
             2. **Standalone Portable**: `Koperasi.exe` (Jalankan langsung tanpa instalasi).
             3. **Checksum Integritas**: `SHA256SUMS.txt`

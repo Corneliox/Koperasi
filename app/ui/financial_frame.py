@@ -300,9 +300,9 @@ class FinancialReportsFrame(ctk.CTkFrame):
             ).pack(side="left")
             
             if is_currency:
-                value_text = f"Rp {value:,.0f}"
+                value_text = f"Rp {(value or 0):,.0f}"
             else:
-                value_text = f"{value:,}"
+                value_text = f"{(value or 0):,}"
             
             ctk.CTkLabel(
                 item_frame,
@@ -327,7 +327,7 @@ class FinancialReportsFrame(ctk.CTkFrame):
             
             ctk.CTkLabel(
                 total_frame,
-                text=f"Rp {total[1]:,.0f}",
+                text=f"Rp {(total[1] or 0):,.0f}",
                 font=ctk.CTkFont(size=14, weight="bold"),
                 text_color=color
             ).pack(side="right", padx=10, pady=10)
@@ -345,7 +345,7 @@ class FinancialReportsFrame(ctk.CTkFrame):
         ).pack(anchor="w", padx=20, pady=(15, 10))
         
         # Net Profit highlight
-        profit = self.current_balance['income']['net_income']
+        profit = self.current_balance['income']['net_income'] or 0
         profit_color = "#4ade80" if profit >= 0 else "#ef4444"
         
         profit_frame = ctk.CTkFrame(summary, fg_color="#1e293b", corner_radius=8)
@@ -366,7 +366,7 @@ class FinancialReportsFrame(ctk.CTkFrame):
         ).pack(anchor="w", padx=15, pady=(5, 15))
         
         # Profit margin
-        revenue = self.current_balance['income']['sales_revenue']
+        revenue = self.current_balance['income']['sales_revenue'] or 0
         if revenue > 0:
             margin = (profit / revenue) * 100
             margin_text = f"{margin:.1f}%"
@@ -403,7 +403,7 @@ class FinancialReportsFrame(ctk.CTkFrame):
         
         ctk.CTkLabel(
             asset_frame,
-            text=f"Rp {self.current_balance['assets']['total_assets']:,.0f}",
+            text=f"Rp {(self.current_balance['assets']['total_assets'] or 0):,.0f}",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#00d4ff"
         ).pack(side="right")

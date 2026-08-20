@@ -458,15 +458,27 @@ class HistoryFrame(ctk.CTkFrame):
             self.update_totals([], 0, 0)
             return
         
-        # Create rows and calculate totals
-        grand_total = 0
-        total_profit = 0
-        
+        # Create rows for current page
         for idx, trans in enumerate(filtered):
             profit = self.calc_profit(trans)
             self.create_row(idx, trans, profit)
-            grand_total += trans.get('total_price', 0)
-            total_profit += profit
+        
+        # Calculate totals across ALL filtered transactions (not just current page)
+        try:
+            all_transactions = self.transaction_manager.get_transactions(
+                start_date=self.start_date_entry.get() if hasattr(self, 'start_date_entry') else None,
+                end_date=self.end_date_entry.get() if hasattr(self, 'end_date_entry') else None,
+                payment_method=getattr(self, 'payment_filter_var', None) and self.payment_filter_var.get(),
+                search_text=getattr(self, 'search_entry', None) and self.search_entry.get(),
+                sort_by=getattr(self, 'sort_var', None) and self.sort_var.get(),
+                limit=None
+            )
+            grand_total = sum(float(t.get('total_price') or 0) for t in all_transactions)
+            total_profit = sum(self.calc_profit(t) for t in all_transactions)
+        except Exception:
+            # Fallback to current page totals if full query fails
+            grand_total = sum(float(t.get('total_price') or 0) for t in filtered)
+            total_profit = sum(self.calc_profit(t) for t in filtered)
         
         # Update footer
         self.update_totals(filtered, grand_total, total_profit)

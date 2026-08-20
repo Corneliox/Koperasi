@@ -2,7 +2,7 @@
 ; Professional Installer with System Audit Wizard
 
 #define MyAppName "Sistem Koperasi"
-#define MyAppVersion "4.3"
+#define MyAppVersion "4.4"
 #define MyAppPublisher "Koperasi"
 #define MyAppURL "https://github.com/Corneliox/koperasi_brimob"
 #define MyAppExeName "Koperasi.exe"

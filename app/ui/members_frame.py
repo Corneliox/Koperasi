@@ -112,6 +112,11 @@ class MembersFrame(ctk.CTkFrame):
     
     def load_data(self, search_term: str = None):
         """Load members into table"""
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
         
@@ -957,7 +962,7 @@ class MemberPurchaseDialog(ctk.CTkToplevel):
                     pass
             else:
                 if not is_quitting: messagebox.showerror("Error Taktikal", res['message'])
-                return
+                # Don't return — continue flow to generate invoice for any Sembako items already processed
         
         # Success Handling
         if success_items:

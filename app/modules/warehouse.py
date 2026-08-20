@@ -541,15 +541,6 @@ class WarehouseManager:
             return {"success": True, "message": "Stok berhasil ditambah", "new_stock": new_stock}
         finally:
             conn.close()
-        
-        log_audit(
-            self.current_user, "INVENTORY", "UPDATE",
-            "warehouse", item_id, 
-            {"stock": item['stock']}, {"stock": new_stock},
-            f"Tambah stok {item['name']}: +{qty} (Total: {new_stock})", "INFO"
-        )
-        
-        return {"success": True, "message": "Stok berhasil ditambah", "new_stock": new_stock}
     
     def get_mutations(self, item_id: int = None, limit: int = 100) -> list:
         """Get mutation history"""

@@ -100,7 +100,7 @@ from app.ui.admin_panel import AuditLogViewer, DangerResetModal
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-APP_VERSION = "4.3"
+APP_VERSION = "4.4"
 
 
 class KoperasiApp(ctk.CTk):
@@ -430,12 +430,12 @@ class KoperasiApp(ctk.CTk):
         """Show what's new in this version"""
         notes = (
             f"🚀 BERHASIL DIPERBARUI KE VERSI {new_ver}!\n\n"
-            "Apa yang baru di versi 4.3:\n"
-            "✅ Sistem Autentikasi Baru: Pendaftaran akun lokal mandiri dengan enkripsi password\n"
-            "✅ Operasi 100% Offline/Lokal: Database mandiri tanpa ketergantungan jaringan eksternal\n"
-            "✅ Antarmuka Netral & Modern: Sistem Koperasi Simpan Pinjam & Manajemen Kasir\n"
-            "✅ Stabilitas Penuh: Mitigasi crash saat input data & validasi angka cerdas\n"
-            "✅ Konkurensi Database: Mode SQLite WAL untuk transaksi multi-thread lancar\n\n"
+            "Apa yang baru di versi 4.4:\n"
+            "✅ Stabilitas Dialog & UI: Perbaikan lifecycle modal dialog dan pencegahan crash saat reopen\n"
+            "✅ Akurasi Finansial Penuh: Perhitungan Grand Total seluruh transaksi & penanganan periode kosong\n"
+            "✅ Integritas Data Cerdas: Validasi ketat input stok/harga barang & proteksi transaksi kasir\n"
+            "✅ Manajemen Koneksi Handal: try...finally terjamin pada seluruh siklus database & audit log\n"
+            "✅ Struk & Faktur Otomatis: Pencetakan bukti transaksi tetap berjalan lancar pada kasir campuran\n\n"
             "Terima kasih telah menggunakan Sistem Koperasi."
         )
         tkinter.messagebox.showinfo(f"Update Berhasil (v{old_ver} -> v{new_ver})", notes)

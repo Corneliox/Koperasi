@@ -540,5 +540,9 @@ class UserIconMenu(ctk.CTkToplevel):
     
     def close_menu(self):
         """Close menu"""
-        self.on_close_callback()
-        self.destroy()
+        try:
+            if self.winfo_exists():
+                self.on_close_callback()
+                self.destroy()
+        except Exception:
+            pass

@@ -12,53 +12,55 @@ from app.database.connection import get_connection
 def init_audit_log_table():
     """Initialize immutable audit log table"""
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Create immutable audit log table - NO DELETE triggers allowed
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS audit_log_immutable (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-            user TEXT NOT NULL,
-            action_category TEXT NOT NULL,
-            action_type TEXT NOT NULL,
-            entity_type TEXT,
-            entity_id INTEGER,
-            old_value TEXT,
-            new_value TEXT,
-            details TEXT,
-            ip_address TEXT,
-            session_id TEXT,
-            level TEXT DEFAULT 'INFO'
-        )
-    """)
-    
-    # Migration: Add level column if not exists
     try:
-        cursor.execute("ALTER TABLE audit_log_immutable ADD COLUMN level TEXT DEFAULT 'INFO'")
-    except:
-        pass
-    
-    # Create index for faster queries
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_audit_timestamp 
-        ON audit_log_immutable(timestamp DESC)
-    """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_audit_entity 
-        ON audit_log_immutable(entity_type, entity_id)
-    """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_audit_user 
-        ON audit_log_immutable(user)
-    """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_audit_level 
-        ON audit_log_immutable(level)
-    """)
-    
-    conn.commit()
-    conn.close()
+        cursor = conn.cursor()
+        
+        # Create immutable audit log table - NO DELETE triggers allowed
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log_immutable (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                user TEXT NOT NULL,
+                action_category TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                entity_type TEXT,
+                entity_id INTEGER,
+                old_value TEXT,
+                new_value TEXT,
+                details TEXT,
+                ip_address TEXT,
+                session_id TEXT,
+                level TEXT DEFAULT 'INFO'
+            )
+        """)
+        
+        # Migration: Add level column if not exists
+        try:
+            cursor.execute("ALTER TABLE audit_log_immutable ADD COLUMN level TEXT DEFAULT 'INFO'")
+        except:
+            pass
+        
+        # Create index for faster queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_audit_timestamp 
+            ON audit_log_immutable(timestamp DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_audit_entity 
+            ON audit_log_immutable(entity_type, entity_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_audit_user 
+            ON audit_log_immutable(user)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_audit_level 
+            ON audit_log_immutable(level)
+        """)
+        
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def log_audit(user: str, action_category: str, action_type: str,
@@ -175,29 +177,28 @@ def archive_old_logs(days: int = 90) -> dict:
     Archive logs older than N days to JSON file and delete from DB
     """
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-    
-    # Select logs to archive
-    cursor.execute(
-        "SELECT * FROM audit_log_immutable WHERE DATE(timestamp) < ?",
-        (cutoff_date,)
-    )
-    logs_to_archive = [dict(row) for row in cursor.fetchall()]
-    
-    if not logs_to_archive:
-        conn.close()
-        return {"success": True, "count": 0, "message": "No logs to archive"}
-    
-    # Ensure directory exists
-    archive_dir = os.path.join(os.getcwd(), "logs", "archive")
-    os.makedirs(archive_dir, exist_ok=True)
-    
-    filename = f"audit_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    filepath = os.path.join(archive_dir, filename)
-    
     try:
+        cursor = conn.cursor()
+        
+        cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        
+        # Select logs to archive
+        cursor.execute(
+            "SELECT * FROM audit_log_immutable WHERE DATE(timestamp) < ?",
+            (cutoff_date,)
+        )
+        logs_to_archive = [dict(row) for row in cursor.fetchall()]
+        
+        if not logs_to_archive:
+            return {"success": True, "count": 0, "message": "No logs to archive"}
+        
+        # Ensure directory exists
+        archive_dir = os.path.join(os.getcwd(), "logs", "archive")
+        os.makedirs(archive_dir, exist_ok=True)
+        
+        filename = f"audit_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filepath = os.path.join(archive_dir, filename)
+        
         with open(filepath, 'w') as f:
             json.dump(logs_to_archive, f, indent=2, default=str)
             
@@ -240,36 +241,37 @@ def get_entity_history(entity_type: str, entity_id: int) -> list:
 def get_audit_statistics() -> dict:
     """Get audit log statistics"""
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Total logs
-    cursor.execute("SELECT COUNT(*) FROM audit_log_immutable")
-    total = cursor.fetchone()[0]
-    
-    # By category
-    cursor.execute("""
-        SELECT action_category, COUNT(*) as count 
-        FROM audit_log_immutable 
-        GROUP BY action_category
-    """)
-    by_category = {row['action_category']: row['count'] for row in cursor.fetchall()}
-    
-    # Today's logs
-    cursor.execute("""
-        SELECT COUNT(*) FROM audit_log_immutable 
-        WHERE DATE(timestamp) = DATE('now', 'localtime')
-    """)
-    today = cursor.fetchone()[0]
-    
-    # Unique users
-    cursor.execute("SELECT COUNT(DISTINCT user) FROM audit_log_immutable")
-    unique_users = cursor.fetchone()[0]
-    
-    conn.close()
-    
-    return {
-        'total_logs': total,
-        'by_category': by_category,
-        'today_logs': today,
-        'unique_users': unique_users
-    }
+    try:
+        cursor = conn.cursor()
+        
+        # Total logs
+        cursor.execute("SELECT COUNT(*) FROM audit_log_immutable")
+        total = cursor.fetchone()[0]
+        
+        # By category
+        cursor.execute("""
+            SELECT action_category, COUNT(*) as count 
+            FROM audit_log_immutable 
+            GROUP BY action_category
+        """)
+        by_category = {row['action_category']: row['count'] for row in cursor.fetchall()}
+        
+        # Today's logs
+        cursor.execute("""
+            SELECT COUNT(*) FROM audit_log_immutable 
+            WHERE DATE(timestamp) = DATE('now', 'localtime')
+        """)
+        today = cursor.fetchone()[0]
+        
+        # Unique users
+        cursor.execute("SELECT COUNT(DISTINCT user) FROM audit_log_immutable")
+        unique_users = cursor.fetchone()[0]
+        
+        return {
+            'total_logs': total,
+            'by_category': by_category,
+            'today_logs': today,
+            'unique_users': unique_users
+        }
+    finally:
+        conn.close()

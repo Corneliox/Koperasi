@@ -137,8 +137,11 @@ class LoansFrame(ctk.CTkFrame):
         loans = self.loan_manager.get_all_loans_with_phone(status_filter)
         
         # Update Stats logic
-        active_loans = [l for l in loans if l['status'] != 'Lunas']
-        total_sum = sum(l['total_amount'] - l['paid_amount'] for l in active_loans)
+        active_loans = [l for l in loans if l.get('status') != 'Lunas']
+        total_sum = sum(
+            float(l.get('total_amount') or 0) - float(l.get('paid_amount') or 0)
+            for l in active_loans
+        )
         
         self.total_loans_label.configure(text=str(len(loans)))
         self.active_loans_label.configure(text=str(len(active_loans)))

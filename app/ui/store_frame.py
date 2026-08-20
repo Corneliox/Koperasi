@@ -454,8 +454,15 @@ class StoreFrame(ctk.CTkFrame):
         # Open preview dialog
         window_key = "import_preview"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            return
+            try:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
+                pass
+            del self.active_windows[window_key]
         
         dialog = ImportPreviewDialog(
             self, filepath, sheets, self.category_context, 
@@ -499,8 +506,15 @@ class StoreFrame(ctk.CTkFrame):
         """Open dialog to add new item"""
         window_key = "add_item"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            return
+            try:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
+                pass
+            del self.active_windows[window_key]
             
         dialog = ItemDialog(self, None, self.on_save, self.category_context)
         self.active_windows[window_key] = dialog
@@ -510,8 +524,15 @@ class StoreFrame(ctk.CTkFrame):
         """Open dialog to edit an item"""
         window_key = f"edit_{item['id']}"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            return
+            try:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
+                pass
+            del self.active_windows[window_key]
             
         dialog = ItemDialog(self, item, self.on_save, self.category_context)
         self.active_windows[window_key] = dialog
@@ -521,8 +542,15 @@ class StoreFrame(ctk.CTkFrame):
         """Open sale dialog"""
         window_key = f"sell_{item['id']}"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            return
+            try:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
+                pass
+            del self.active_windows[window_key]
             
         dialog = SellDialog(self, item, self.on_transaction_saved, self.current_user)
         self.active_windows[window_key] = dialog
@@ -532,8 +560,15 @@ class StoreFrame(ctk.CTkFrame):
         """Open return dialog"""
         window_key = f"return_{item['id']}"
         if window_key in self.active_windows:
-            self.active_windows[window_key].lift()
-            return
+            try:
+                win = self.active_windows[window_key]
+                if win and win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
+                    return
+            except Exception:
+                pass
+            del self.active_windows[window_key]
             
         dialog = ReturDialog(self, item, self.on_transaction_saved, self.current_user)
         self.active_windows[window_key] = dialog
@@ -831,9 +866,20 @@ class ItemDialog(ctk.CTkToplevel):
         name = self.name_entry.get().strip()
         
         try:
-            stock = int(clean_numeric(self.stock_entry.get()))
-            buy_price = clean_numeric(self.buy_price_entry.get())
-            sell_price = clean_numeric(self.sell_price_entry.get())
+            s_val = self.stock_entry.get().strip()
+            b_val = self.buy_price_entry.get().strip()
+            sp_val = self.sell_price_entry.get().strip()
+            
+            # Pre-check: ensure non-empty inputs contain at least one digit
+            for label, val in [("Stok", s_val), ("Harga Beli", b_val), ("Harga Jual", sp_val)]:
+                if val and not any(c.isdigit() for c in val):
+                    if not is_quitting:
+                        messagebox.showerror("Error", f"{label} harus berupa angka valid!")
+                    return
+            
+            stock = int(clean_numeric(s_val))
+            buy_price = clean_numeric(b_val)
+            sell_price = clean_numeric(sp_val)
         except (ValueError, TypeError):
             if not is_quitting:
                 messagebox.showerror("Error", "Stok dan Harga harus berupa angka valid!")
